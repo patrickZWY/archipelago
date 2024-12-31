@@ -48,6 +48,9 @@ public class User {
         this.updateTime = LocalDateTime.now();
     }
 
+    public String getEmail() {
+        return email;
+    }
 
 
 }
