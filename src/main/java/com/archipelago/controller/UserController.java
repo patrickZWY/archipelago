@@ -23,6 +23,6 @@ public class UserController {
     @PutMapping("/profile")
     public ResponseEntity<ApiResponse<Void>> updateProfile(@RequestBody UpdateProfileRequest request) {
         userService.updateProfile(request);
-        return ResponseEntity.ok(new ApiResponse<>(true, null, "Profile updated success"));
+        return ResponseEntity.ok(ApiResponse.success("Profile updated success"));
     }
 }

@@ -22,27 +22,27 @@ public class AuthController {
     public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request) {
         User user = authService.register(request.getEmail(), request.getPassword(), request.getUsername());
         String token = jwtUtil.generateToken(user);
-        return ResponseEntity.status(HttpStatus.CREATED).body(new ApiResponse<>(true, new AuthResponse(token), "user registration success"));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(new AuthResponse(token), "user registration success"));
     }
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
         User user = authService.authenticate(request.getEmail(), request.getPassword());
         String token = jwtUtil.generateToken(user);
-        return ResponseEntity.ok(new ApiResponse<>(true, new AuthResponse(token), "login success"));
+        return ResponseEntity.ok(ApiResponse.success(new AuthResponse(token), "login success"));
     }
 
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(@RequestHeader("Authorization") String token) {
         authService.logout(token);
-        return ResponseEntity.ok(new ApiResponse<>(true, null, "logout success"));
+        return ResponseEntity.ok(ApiResponse.success(null, "logout success"));
 
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(@RequestHeader("Authorization") String token) {
         String newToken = authService.refreshToken(token);
-        return ResponseEntity.ok(new ApiResponse<>(true, new AuthResponse(newToken), "Token refresh success"));
+        return ResponseEntity.ok(ApiResponse.success(new AuthResponse(newToken), "Token refresh success"));
     }
 
 
