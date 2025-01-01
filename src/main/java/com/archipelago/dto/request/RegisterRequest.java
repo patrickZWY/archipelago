@@ -24,8 +24,4 @@ public class RegisterRequest {
     @Size(max = 50, message = "Username must not exceed 50 characters")
     private String username;
 
-    public String getEmail() {
-        return this.email;
-    }
-
 }

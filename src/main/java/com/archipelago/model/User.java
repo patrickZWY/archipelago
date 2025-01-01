@@ -38,7 +38,16 @@ public class User {
     @Column(nullable = false)
     private LocalDateTime updateTime;
 
+    @Column(nullable = true, unique = true)
+    private String verificationToken;
+
+    @Column(nullable = false)
+    private boolean verified = false;
+
     private boolean enabled = true;
+
+    private String passwordResetToken;
+    private LocalDateTime passwordResetTokenExpireTime;
 
     @Enumerated(EnumType.STRING)
     private Role role = Role.USER;
@@ -46,10 +55,6 @@ public class User {
     @PreUpdate
     protected void setUpdate() {
         this.updateTime = LocalDateTime.now();
-    }
-
-    public String getEmail() {
-        return email;
     }
 
 

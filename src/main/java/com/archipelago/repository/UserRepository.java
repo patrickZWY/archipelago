@@ -17,4 +17,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT COUNT(u) > 0 FROM User u WHERE LOWER(u.email) = LOWER(:email)")
     boolean existsByEmailIgnoreCase(@Param("email") String email);
 
+    Optional<User> findByVerificationToken(String token);
+
+    Optional<User> findByPasswordResetToken(String token);
+
 }
