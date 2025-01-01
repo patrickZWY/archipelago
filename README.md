@@ -4,7 +4,7 @@ Archipelago is a webapp for sharing your knowledge about movies and their connec
 
 ## Progress
 
-- **User** current
+- **User** current(logging, email, test, usersettings, etc) 
 - **Movie**
 - **Connection**
 - **Frontend**
