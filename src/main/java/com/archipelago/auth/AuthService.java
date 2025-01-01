@@ -1,9 +1,6 @@
 package com.archipelago.auth;
 
-import com.archipelago.exception.EmailAlreadyExistsException;
-import com.archipelago.exception.InvalidCredentialsException;
-import com.archipelago.exception.InvalidTokenException;
-import com.archipelago.exception.UserNotFoundException;
+import com.archipelago.exception.*;
 import com.archipelago.model.User;
 import com.archipelago.model.enums.Role;
 import com.archipelago.repository.UserRepository;
@@ -48,12 +45,28 @@ public class AuthService {
     public User authenticate(String email, String password) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid email or password"));
+        if (user.getLockoutTime() != null && user.getLockoutTime().isAfter(LocalDateTime.now())) {
+            throw new TooManyLoginAttemptsException("User locked until:" + user.getLockoutTime());
+        }
         if (!passwordEncoder.matches(password, user.getPassword())) {
+            user.setFailedLoginAttempts(user.getFailedLoginAttempts() + 1);
+
+            if (user.getFailedLoginAttempts() >= 5) {
+                user.setLockoutTime(LocalDateTime.now().plusMinutes(10));
+                userRepository.save(user);
+                throw new TooManyLoginAttemptsException("Account locked for 10 minutes");
+            }
+            userRepository.save(user);
             throw new InvalidCredentialsException("Invalid email or password");
         }
         if (!user.isVerified()) {
             throw new InvalidCredentialsException("Account unverified. Check email.");
         }
+        // successful login and reset
+        user.setFailedLoginAttempts(0);
+        user.setLockoutTime(null);
+        userRepository.save(user);
+
         return user;
     }
 

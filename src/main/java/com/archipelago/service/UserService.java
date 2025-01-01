@@ -44,4 +44,13 @@ public class UserService {
     private String getCurrentUserEmail() {
         return (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
+
+    // soft delete, 
+    public void deleteCurrentUser() {
+        String email = getCurrentUserEmail();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException("User not found with email: " + email));
+        user.setDeleted(true);
+        userRepository.save(user);
+    }
 }

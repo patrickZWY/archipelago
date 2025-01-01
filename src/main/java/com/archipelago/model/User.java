@@ -47,7 +47,14 @@ public class User {
     private boolean enabled = true;
 
     private String passwordResetToken;
+
     private LocalDateTime passwordResetTokenExpireTime;
+
+    private int failedLoginAttempts;
+
+    private LocalDateTime lockoutTime;
+
+    private boolean deleted = false;
 
     @Enumerated(EnumType.STRING)
     private Role role = Role.USER;

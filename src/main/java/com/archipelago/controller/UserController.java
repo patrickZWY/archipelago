@@ -25,4 +25,10 @@ public class UserController {
         userService.updateProfile(request);
         return ResponseEntity.ok(ApiResponse.success("Profile updated success"));
     }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<ApiResponse<Void>> deleteAccount() {
+        userService.deleteCurrentUser();
+        return ResponseEntity.ok(ApiResponse.success("Account deletion success"));
+    }
 }
