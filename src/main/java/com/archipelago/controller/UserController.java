@@ -26,7 +26,7 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success("Profile updated success"));
     }
 
-    @DeleteMapping("/me")
+    @DeleteMapping("/delete")
     public ResponseEntity<ApiResponse<Void>> deleteAccount() {
         userService.deleteCurrentUser();
         return ResponseEntity.ok(ApiResponse.success("Account deletion success"));
