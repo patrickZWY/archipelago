@@ -6,8 +6,10 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -17,11 +19,21 @@ import java.util.Date;
 @Component
 public class JwtUtil {
     private static final Logger logger = LoggerFactory.getLogger(JwtUtil.class);
-    private final String SECRET_KEY = "Diffugere nives, redeunt iam gramina campis" +
-            "Arboribusque comae";
-    private final long EXPIRATION_TIME = 3600000; // one hour
 
-    private final SecretKey key = Keys.hmacShaKeyFor(SECRET_KEY.getBytes(StandardCharsets.UTF_8));
+    @Value("${jwt.secret}")
+    private String secret;
+
+    private SecretKey key;
+
+    private final long EXPIRATION_TIME = 3600000;
+
+    @PostConstruct
+    public void init() {
+        if (secret == null || secret.isEmpty()) {
+            throw new IllegalStateException("JWT_SECRET_KEY was not set");
+        }
+        key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
 
     public String generateToken(User user) {
         logger.debug("Generating token attempt for user: {}", user.getEmail());
