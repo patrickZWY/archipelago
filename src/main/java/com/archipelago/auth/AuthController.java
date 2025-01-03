@@ -94,29 +94,4 @@ public class AuthController {
         logger.info("Reset password success for token: {}", request.getToken());
         return ResponseEntity.ok(ApiResponse.success("Password reset success"));
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 }

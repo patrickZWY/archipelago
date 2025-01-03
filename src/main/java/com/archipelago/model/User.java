@@ -64,5 +64,4 @@ public class User {
         this.updateTime = LocalDateTime.now();
     }
 
-
 }

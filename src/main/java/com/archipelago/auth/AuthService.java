@@ -2,12 +2,10 @@ package com.archipelago.auth;
 
 import com.archipelago.exception.*;
 import com.archipelago.model.User;
-import com.archipelago.model.enums.Role;
 import com.archipelago.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.mail.MailProperties;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
