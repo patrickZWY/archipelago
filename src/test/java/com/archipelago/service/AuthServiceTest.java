@@ -5,7 +5,6 @@ import com.archipelago.auth.JwtUtil;
 import com.archipelago.exception.EmailAlreadyExistsException;
 import com.archipelago.exception.InvalidCredentialsException;
 import com.archipelago.exception.InvalidTokenException;
-import com.archipelago.exception.UserNotFoundException;
 import com.archipelago.model.User;
 import com.archipelago.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,7 +12,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
