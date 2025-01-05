@@ -1,12 +1,11 @@
 package com.archipelago.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
 
 @Entity
 @Table(name = "movies")
@@ -21,12 +20,14 @@ public class Movie {
     private Long id;
 
     @Column(nullable = false, unique = true)
+    @NotBlank(message = "Title is required")
     private String title;
 
     @Column(nullable = false)
-    private String releaseYear;
+    private int releaseYear;
 
     @Column(nullable = false)
+    @NotBlank(message = "Director is required")
     private String director;
 
     @Column
@@ -34,19 +35,5 @@ public class Movie {
 
     @Column
     private String externalId;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 }

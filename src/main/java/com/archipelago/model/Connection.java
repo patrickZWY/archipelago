@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "connection")
+@Table(name = "connections")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -19,7 +19,7 @@ public class Connection {
     private Long id;
 
     @ManyToOne(optional = false)
-    @JoinColumn(name = "from_moive_id", nullable = false)
+    @JoinColumn(name = "from_movie_id", nullable = false)
     private Movie fromMovie;
 
     @ManyToOne(optional = false)
@@ -29,30 +29,14 @@ public class Connection {
     @Column(nullable = false, length = 500)
     private String reason;
 
+    @Column
+    private double weight = 1.0;
+
+    @Column
+    private String category;
+
     @ManyToOne(optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 }
