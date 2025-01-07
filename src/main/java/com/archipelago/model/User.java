@@ -64,4 +64,13 @@ public class User {
         this.updateTime = LocalDateTime.now();
     }
 
+    @PrePersist
+    protected void onCreate() {
+        this.creationTime = LocalDateTime.now();
+        this.updateTime = LocalDateTime.now();
+    }
+
+
+
+
 }
