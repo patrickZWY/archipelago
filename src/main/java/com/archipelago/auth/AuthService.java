@@ -2,6 +2,7 @@ package com.archipelago.auth;
 
 import com.archipelago.exception.*;
 import com.archipelago.model.User;
+import com.archipelago.model.enums.Role;
 import com.archipelago.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -33,6 +34,7 @@ public class AuthService {
                 .email(email)
                 .password(passwordEncoder.encode(password))
                 .username(username)
+                .role(Role.USER)
                 .enabled(true)
                 .build();
         logger.debug("Password encoded for user with email: {}", email);
