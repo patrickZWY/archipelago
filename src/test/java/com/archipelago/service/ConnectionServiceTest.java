@@ -6,6 +6,7 @@ import com.archipelago.model.Movie;
 import com.archipelago.model.User;
 import com.archipelago.repository.ConnectionRepository;
 import com.archipelago.repository.MovieRepository;
+import com.archipelago.service.impl.ConnectionServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,7 +29,7 @@ class ConnectionServiceTest {
     private MovieRepository movieRepository;
 
     @InjectMocks
-    private ConnectionService connectionService;
+    private ConnectionServiceImpl connectionService; // Use the implementation class here
 
     private Movie movie1, movie2;
     private User user;
@@ -114,3 +115,4 @@ class ConnectionServiceTest {
         verify(connectionRepository, never()).save(any(Connection.class));
     }
 }
+

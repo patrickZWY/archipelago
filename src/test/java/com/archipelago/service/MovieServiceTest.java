@@ -3,6 +3,7 @@ package com.archipelago.service;
 import com.archipelago.exception.ResourceNotFoundException;
 import com.archipelago.model.Movie;
 import com.archipelago.repository.MovieRepository;
+import com.archipelago.service.impl.MovieServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,7 +24,7 @@ class MovieServiceTest {
     private MovieRepository movieRepository;
 
     @InjectMocks
-    private MovieService movieService;
+    private MovieServiceImpl movieService; // Injecting the implementation class
 
     private Movie sampleMovie;
 
