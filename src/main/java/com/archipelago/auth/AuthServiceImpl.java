@@ -4,6 +4,7 @@ import com.archipelago.exception.*;
 import com.archipelago.model.User;
 import com.archipelago.model.enums.Role;
 import com.archipelago.repository.UserRepository;
+import com.archipelago.service.EmailService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,7 @@ public class AuthServiceImpl implements AuthService {
     private static final Logger logger = LoggerFactory.getLogger(AuthServiceImpl.class);
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
     private final JwtUtil jwtUtil;
 
     @Override
@@ -45,7 +47,12 @@ public class AuthServiceImpl implements AuthService {
 
         User saved = userRepository.save(user);
         logger.info("User saved in DB with email: {}", saved.getEmail());
-        // token for debugging, mail service not available yet
+        // verification email
+        String verificationLink = "http://localhost:8080/api/auth/verify?token=" + user.getVerificationToken();
+        emailService.sendEmail(email, "Verify your account",
+                "<h1>Welcome to Archipelago!</h1>" +
+                "<p>Click me to verify your account</p>" +
+                "<a href=\"" + verificationLink + "\">Verify Account</a>");
         System.out.println("Verification token: " + token);
         return saved;
     }
@@ -136,7 +143,11 @@ public class AuthServiceImpl implements AuthService {
         userRepository.save(user);
         logger.info("Handle forgot password success for user: {}", email);
 
-        // mail service not available yet
+        String resetLink = "http://localhost:8080/api/auth/reset-password?token=" + token;
+        emailService.sendEmail(email, "Reset Your Password",
+                "<h1>Reset Password Request</h1>" +
+                        "<p>Click the link below to reset your password:</p>" +
+                        "<a href=\"" + resetLink + "\">Reset Password</a>");
     }
 
     @Override
