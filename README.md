@@ -14,3 +14,4 @@ Archipelago is a webapp for sharing your knowledge about movies and their connec
 ### Build
 - Docker and its Desktop installed
 - docker compose up --build
+- docker compose down
