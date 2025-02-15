@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.archipelago.mapper.UserMapper">
+    <resultMap id="UserResultMap" type="com.archipelago.model.User">
+        <id property="id" column="id"/>
+        <result property="email" column="email"/>
+        <result property="password" column="password"/>
+        <result property="username" column="username"/>
+        <result property="creationTime" column="creation_time"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="verificationToken" column="verification_token"/>
+        <result property="verified" column="verified"/>
+        <result property="enabled" column="enabled"/>
+        <result property="passwordResetToken" column="password_reset_token"/>
+        <result property="passwordResetTokenExpireTime" column="password_reset_token_expire_time"/>
+        <result property="failedLoginAttempts" column="failed_login_attempts"/>
+        <result property="lockoutTime" column="lockout_time"/>
+        <result property="deleted" column="deleted"/>
+        <result property="role" column="role"/>
+    </resultMap>
+
+    <select id="countByEmail" parameterType="String" resultType="int">
+        SELECT COUNT(*) FROM users WHERE LOWER(email) = LOWER(#{email})
+    </select>
+
+    <insert id="insert" parameterType="com.archipelago.model.User" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO users (email, password, username, role, enabled, verification_token, verified, creation_time, update_time)
+        VALUES (#{email}, #{password}, #{username}, #{role}, #{enabled}, #{verificationToken}, #{verified}, NOW(), NOW())
+    </insert>
+
+    <select id="countByUsernameIgnoreCase" parameterType="String" resultType="int">
+        SELECT COUNT(*) FROM users WHERE LOWER(username) = LOWER(#{username})
+    </select>
+
+    <select id="findByEmail" parameterType="String" resultMap="UserResultMap">
+        SELECT * FROM users WHERE email = #{email}
+    </select>
+
+    <select id="findByVerificationToken" parameterType="String" resultMap="UserResultMap">
+        SELECT * FROM users WHERE verification_token = #{token}
+    </select>
+
+    <select id="findByPasswordResetToken" parameterType="String" resultMap="UserResultMap">
+        SELECT * FROM users WHERE password_reset_token = #{token}
+    </select>
+
+    <update id="update" parameterType="com.archipelago.model.User">
+        UPDATE users
+        SET password = #{password},
+            username = #{username},
+            verified = #{verified},
+            verification_token = #{verificationToken},
+            password_reset_token = #{passwordResetToken},
+            password_reset_token_expire_time = #{passwordResetTokenExpireTime},
+            failed_login_attempts = #{failedLoginAttempts},
+            lockout_time = #{lockoutTime},
+            enabled = #{enabled},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateProfile">
+        UPDATE users
+        SET username = #{username},
+            password = #{password},
+            update_time = NOW()
+        WHERE email = #{email}
+    </update>
+</mapper>
