@@ -1,6 +1,7 @@
 package com.archipelago.auth;
 
 import com.archipelago.exception.*;
+import com.archipelago.mapper.UserMapper;
 import com.archipelago.model.User;
 import com.archipelago.model.enums.Role;
 import com.archipelago.repository.UserRepository;
@@ -18,7 +19,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
     private static final Logger logger = LoggerFactory.getLogger(AuthServiceImpl.class);
-    private final UserRepository userRepository;
+    private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final JwtUtil jwtUtil;
@@ -27,7 +28,7 @@ public class AuthServiceImpl implements AuthService {
     public User register(String email, String password, String username) {
         logger.debug("Registering user with email: {}", email);
 
-        if (userRepository.existsByEmail(email)) {
+        if (userMapper.countByEmail(email) > 0) {
             logger.warn("Registration failed, email already in use: {}", email);
             throw new EmailAlreadyExistsException("email used already: " + email);
         }
@@ -45,8 +46,8 @@ public class AuthServiceImpl implements AuthService {
         user.setVerificationToken(token);
         user.setVerified(false);
 
-        User saved = userRepository.save(user);
-        logger.info("User saved in DB with email: {}", saved.getEmail());
+        userMapper.insert(user);
+        logger.info("User saved in DB with email: {}", user.getEmail());
         // verification email
         String verificationLink = "http://localhost:8080/api/auth/verify?token=" + user.getVerificationToken();
         emailService.sendEmail(email, "Verify your account",
@@ -54,14 +55,14 @@ public class AuthServiceImpl implements AuthService {
                 "<p>Click me to verify your account</p>" +
                 "<a href=\"" + verificationLink + "\">Verify Account</a>");
         System.out.println("Verification token: " + token);
-        return saved;
+        return user;
     }
 
     @Override
     public User authenticate(String email, String password) {
         logger.debug("Authenticating user with email: {}", email);
 
-        User user = userRepository.findByEmail(email)
+        User user = userMapper.findByEmail(email)
                 .orElseThrow(() -> {
                     logger.error("No user found with email: {}", email);
                     return new InvalidCredentialsException("Invalid email or password");
@@ -75,11 +76,11 @@ public class AuthServiceImpl implements AuthService {
 
             if (user.getFailedLoginAttempts() >= 5) {
                 user.setLockoutTime(LocalDateTime.now().plusMinutes(10));
-                userRepository.save(user);
+                userMapper.update(user);
                 logger.warn("User locked until: {}", user.getLockoutTime());
                 throw new TooManyLoginAttemptsException("Account locked for 10 minutes");
             }
-            userRepository.save(user);
+            userMapper.update(user);
             logger.warn("Invalid password or email for email: {}", email);
             throw new InvalidCredentialsException("Invalid email or password");
         }
@@ -90,7 +91,7 @@ public class AuthServiceImpl implements AuthService {
         // successful login and reset
         user.setFailedLoginAttempts(0);
         user.setLockoutTime(null);
-        userRepository.save(user);
+        userMapper.update(user);
         logger.info("User authenticated with email: {}", user.getEmail());
 
         return user;
@@ -113,7 +114,7 @@ public class AuthServiceImpl implements AuthService {
 
         String email = jwtUtil.getEmailFromToken(oldToken);
         logger.debug("Retrieved email from old token: {}", email);
-        User user = userRepository.findByEmail(email)
+        User user = userMapper.findByEmail(email)
                 .orElseThrow(() ->
                 {
                     logger.error("No user found with email: {}", email);
@@ -128,7 +129,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public void handleForgotPassword(String email) {
         logger.info("Handle forgot password attempt for email {}", email);
-        User user = userRepository.findByEmail(email)
+        User user = userMapper.findByEmail(email)
                 .orElseThrow(() ->
                 {
                     logger.error("No user found with email: {}", email);
@@ -140,7 +141,7 @@ public class AuthServiceImpl implements AuthService {
         user.setPasswordResetToken(token);
         user.setPasswordResetTokenExpireTime(LocalDateTime.now().plusHours(1));
         logger.info("New password reset token generated for user: {}", email);
-        userRepository.save(user);
+        userMapper.update(user);
         logger.info("Handle forgot password success for user: {}", email);
 
         String resetLink = "http://localhost:8080/api/auth/reset-password?token=" + token;
@@ -153,7 +154,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public void resetPassword(String token, String newPassword) {
         logger.info("Reset password attempt for user: {}", token);
-        User user = userRepository.findByPasswordResetToken(token)
+        User user = userMapper.findByPasswordResetToken(token)
                 .orElseThrow(() ->
                 {
                     logger.error("No user found with token: {}", token);
@@ -168,7 +169,7 @@ public class AuthServiceImpl implements AuthService {
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setPasswordResetToken(null);
         user.setPasswordResetTokenExpireTime(null);
-        userRepository.save(user);
+        userMapper.update(user);
         logger.info("Password reset success");
     }
 }

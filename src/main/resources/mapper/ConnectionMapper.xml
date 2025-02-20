@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.archipelago.mapper.ConnectionMapper">
+
+    <resultMap id="ConnectionResultMap" type="com.archipelago.model.Connection">
+        <id property="id" column="id" />
+        <result property="reason" column="reason"/>
+        <result property="weight" column="weight"/>
+        <result property="category" column="category"/>
+        <result property="user.id" column="user_id"/>
+        <association property="fromMovie" column="from_movie_id"
+                     javaType="com.archipelago.model.Movie"
+                     select="com.archipelago.mapper.MovieMapper.findById"/>
+        <association property="toMovie" column="to_movie_id"
+                     javaType="com.archipelago.model.Movie"
+                     select="com.archipelago.mapper.MovieMapper.findById"/>
+    </resultMap>
+
+    <select id="findByUserId" parameterType="long" resultMap="ConnectionResultMap">
+        SELECT * FROM connections WHERE user_id = #{userId}
+    </select>
+
+    <insert id="insert" parameterType="com.archipelago.model.Connection" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO connections (from_movie_id, to_movie_id, reason, weight, category, user_id)
+            VALUES (#{fromMovie.id}, #{toMovie.id}, #{reason}, #{weight}, #{category}, #{user.id})
+    </insert>
+
+    <select id="findById" parameterType="long" resultMap="ConnectionResultMap">
+        SELECT * FROM connections WHERE id = #{id}
+    </select>
+
+    <update id="update" parameterType="com.archipelago.model.Connection">
+        UPDATE connections
+        SET reason = #{reason},
+            weight = #{weight},
+            category = #{category}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete" parameterType="long">
+        DELETE FROM connections WHERE id = #{id}
+    </delete>
+
+</mapper>

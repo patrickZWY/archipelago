@@ -1,6 +1,8 @@
 package com.archipelago.service.impl;
 
 import com.archipelago.exception.ResourceNotFoundException;
+import com.archipelago.mapper.ConnectionMapper;
+import com.archipelago.mapper.MovieMapper;
 import com.archipelago.model.Connection;
 import com.archipelago.model.Movie;
 import com.archipelago.model.User;
@@ -15,14 +17,14 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ConnectionServiceImpl implements ConnectionService {
-    private final ConnectionRepository connectionRepository;
-    private final MovieRepository movieRepository;
+    private final ConnectionMapper connectionMapper;
+    private final MovieMapper movieMapper;
 
     @Override
     public Connection addConnection(User user, Long fromMovieId, Long toMovieId, String reason) {
-        Movie fromMovie = movieRepository.findById(fromMovieId)
+        Movie fromMovie = movieMapper.findById(fromMovieId)
                 .orElseThrow(() -> new ResourceNotFoundException("From movie not found"));
-        Movie toMovie = movieRepository.findById(toMovieId)
+        Movie toMovie = movieMapper.findById(toMovieId)
                 .orElseThrow(() -> new ResourceNotFoundException("To movie not found"));
 
         Connection connection = Connection.builder()
@@ -31,27 +33,29 @@ public class ConnectionServiceImpl implements ConnectionService {
                 .reason(reason)
                 .user(user)
                 .build();
-        return connectionRepository.save(connection);
+        connectionMapper.insert(connection);
+        return connection;
     }
 
     @Override
     public List<Connection> getConnectionsByUser(User user) {
-        return connectionRepository.findByUser(user);
+        return connectionMapper.findByUserId(user.getId());
     }
 
     @Override
     public void deleteConnection(Long connectionId) {
-        Connection connection = connectionRepository.findById(connectionId)
+        connectionMapper.findById(connectionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Connection not found"));
-        connectionRepository.delete(connection);
+        connectionMapper.delete(connectionId);
     }
 
     @Override
     public Connection updateConnection(Long connectionId, String newReason) {
-        Connection connection = connectionRepository.findById(connectionId)
+        Connection connection = connectionMapper.findById(connectionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Connection not found"));
         connection.setReason(newReason);
-        return connectionRepository.save(connection);
+        connectionMapper.update(connection);
+        return connection;
     }
 }
 

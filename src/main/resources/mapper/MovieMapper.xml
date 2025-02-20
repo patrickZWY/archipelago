@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.archipelago.mapper.MovieMapper">
+    <resultMap id="MovieResultMap" type="com.archipelago.model.Movie">
+        <id property="id" column="id"/>
+        <result property="title" column="title" />
+        <result property="releaseYear" column="release_year" />
+        <result property="director" column="director" />
+        <result property="pictureUrl" column="picture_url"/>
+        <result property="externalId" column="external_id"/>
+    </resultMap>
+
+    <select id="findById" parameterType="long" resultMap="MovieResultMap">
+        SELECT * FROM movies WHERE id = #{id}
+    </select>
+
+    <select id="countByTitle" parameterType="String" resultType="int">
+        SELECT COUNT(*) FROM movies WHERE title = #{title}
+    </select>
+
+    <select id="searchMovies" parameterType="String" resultMap="MovieResultMap">
+        SELECT * FROM movies
+        WHERE LOWER(title) LIKE CONCAT('%', LOWER(#{title}), '%')
+    </select>
+
+</mapper>
