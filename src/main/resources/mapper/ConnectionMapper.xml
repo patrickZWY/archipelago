@@ -9,7 +9,7 @@
         <result property="reason" column="reason"/>
         <result property="weight" column="weight"/>
         <result property="category" column="category"/>
-        <result property="user.id" column="user_id"/>
+        <result property="user" column="user_id"/>
         <association property="fromMovie" column="from_movie_id"
                      javaType="com.archipelago.model.Movie"
                      select="com.archipelago.mapper.MovieMapper.findById"/>

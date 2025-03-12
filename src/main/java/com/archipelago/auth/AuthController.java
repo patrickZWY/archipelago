@@ -7,7 +7,7 @@ import com.archipelago.dto.request.ResetPasswordRequest;
 import com.archipelago.dto.response.AuthResponse;
 import com.archipelago.exception.UserNotFoundException;
 import com.archipelago.model.User;
-import com.archipelago.repository.UserRepository;
+import com.archipelago.mapper.UserMapper;
 import com.archipelago.util.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
     private final AuthService authService;
     private final JwtUtil jwtUtil;
-    private final UserRepository userRepository;
+    private final UserMapper userMapper;
     private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
 
     @PostMapping("/register")
@@ -70,11 +70,11 @@ public class AuthController {
     @GetMapping("/verify")
     public ResponseEntity<ApiResponse<Void>> verify(@RequestParam String token) {
         logger.info("Verify attempt for token: {}", token);
-        User user = userRepository.findByVerificationToken(token)
+        User user = userMapper.findByVerificationToken(token)
                 .orElseThrow(() -> new UserNotFoundException("Invalid verification token"));
         user.setVerified(true);
         user.setVerificationToken(null);
-        userRepository.save(user);
+        userMapper.update(user);
         logger.info("Verify successful for token: {}", token);
         return ResponseEntity.ok(ApiResponse.success("Account verification success"));
     }

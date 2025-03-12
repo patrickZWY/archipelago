@@ -6,7 +6,6 @@ import com.archipelago.exception.EmailAlreadyExistsException;
 import com.archipelago.exception.UserNotFoundException;
 import com.archipelago.mapper.UserMapper;
 import com.archipelago.model.User;
-import com.archipelago.repository.UserRepository;
 import com.archipelago.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;

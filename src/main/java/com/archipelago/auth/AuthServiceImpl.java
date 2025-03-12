@@ -4,7 +4,6 @@ import com.archipelago.exception.*;
 import com.archipelago.mapper.UserMapper;
 import com.archipelago.model.User;
 import com.archipelago.model.enums.Role;
-import com.archipelago.repository.UserRepository;
 import com.archipelago.service.EmailService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;

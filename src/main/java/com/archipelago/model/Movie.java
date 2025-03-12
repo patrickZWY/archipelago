@@ -1,39 +1,39 @@
 package com.archipelago.model;
 
-import jakarta.persistence.*;
-import jakarta.validation.constraints.NotBlank;
+//import jakarta.persistence.*;
+//import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-@Entity
-@Table(name = "movies")
+//@Entity
+//@Table(name = "movies")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class Movie {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+//    @Id
+//    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
-    @NotBlank(message = "Title is required")
+//    @Column(nullable = false, unique = true)
+//    @NotBlank(message = "Title is required")
     private String title;
 
-    @Column(nullable = false)
+//    @Column(nullable = false)
     private int releaseYear;
 
-    @Column(nullable = false)
-    @NotBlank(message = "Director is required")
+//    @Column(nullable = false)
+//    @NotBlank(message = "Director is required")
     private String director;
 
-    @Column
+//    @Column
     private String pictureUrl;
 
-    @Column
+//    @Column
     private String externalId;
 
 }
