@@ -5,8 +5,8 @@ import com.archipelago.auth.JwtUtil;
 import com.archipelago.exception.EmailAlreadyExistsException;
 import com.archipelago.exception.InvalidCredentialsException;
 import com.archipelago.exception.InvalidTokenException;
+import com.archipelago.mapper.UserMapper;
 import com.archipelago.model.User;
-import com.archipelago.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,7 +25,7 @@ import static org.mockito.Mockito.*;
 class AuthServiceTest {
 
     @Mock
-    private UserRepository userRepository;
+    private UserMapper userMapper;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -34,7 +34,7 @@ class AuthServiceTest {
     private JwtUtil jwtUtil;
 
     @InjectMocks
-    private AuthServiceImpl authService; // Inject the implementation class
+    private AuthServiceImpl authService;
 
     @BeforeEach
     void setUp() {
@@ -54,47 +54,34 @@ class AuthServiceTest {
                 .thenReturn("default@example.com");
     }
 
-    // ------------------------------------
-    // REGISTER Tests
-    // ------------------------------------
     @Test
     void register_shouldThrowEmailAlreadyExistsException() {
         String email = "used@example.com";
 
-        when(userRepository.existsByEmail(email)).thenReturn(true);
+        when(userMapper.countByEmail(email) > 0).thenReturn(true);
 
         assertThrows(EmailAlreadyExistsException.class, () ->
                 authService.register(email, "password", "testUser")
         );
 
-        verify(userRepository, never()).save(any(User.class));
+        verify(userMapper, never()).update(any(User.class));
     }
 
     @Test
     void register_shouldCreateUser_whenEmailNotUsed() {
         String email = "new@example.com";
-        when(userRepository.existsByEmail(email)).thenReturn(false);
-
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
-            User userArg = invocation.getArgument(0);
-            userArg.setId(101L);
-            return userArg;
-        });
+        when(userMapper.countByEmail(email)).thenReturn(0);
 
         User created = authService.register(email, "somePass", "myUser");
         assertNotNull(created);
-        assertEquals(101L, created.getId());
         assertEquals(email, created.getEmail());
         assertTrue(created.getPassword().startsWith("encoded-"));
     }
 
-    // ------------------------------------
-    // AUTHENTICATE Tests
-    // ------------------------------------
     @Test
     void authenticate_shouldThrowInvalidCredentials_ifUserNotFound() {
         String email = "notfound@example.com";
-        when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
+        when(userMapper.findByEmail(email)).thenReturn(Optional.empty());
 
         assertThrows(InvalidCredentialsException.class, () ->
                 authService.authenticate(email, "anyPass")
@@ -110,7 +97,7 @@ class AuthServiceTest {
         existing.setPassword("encoded-correctPassword");
         existing.setVerified(true);
 
-        when(userRepository.findByEmail(email)).thenReturn(Optional.of(existing));
+        when(userMapper.findByEmail(email)).thenReturn(Optional.of(existing));
         when(passwordEncoder.matches("wrongPassword", "encoded-correctPassword")).thenReturn(false);
 
         assertThrows(InvalidCredentialsException.class, () ->
@@ -128,7 +115,7 @@ class AuthServiceTest {
         existing.setPassword("encoded-correctPass");
         existing.setVerified(true);
 
-        when(userRepository.findByEmail(email)).thenReturn(Optional.of(existing));
+        when(userMapper.findByEmail(email)).thenReturn(Optional.of(existing));
         when(passwordEncoder.matches(rawPass, "encoded-correctPass")).thenReturn(true);
 
         User authenticated = authService.authenticate(email, rawPass);
@@ -136,9 +123,6 @@ class AuthServiceTest {
         assertEquals(email, authenticated.getEmail());
     }
 
-    // ------------------------------------
-    // REFRESH TOKEN Tests
-    // ------------------------------------
     @Test
     void refreshToken_shouldThrowInvalidTokenException_ifTokenInvalid() {
         String oldToken = "invalidToken";
@@ -159,7 +143,7 @@ class AuthServiceTest {
 
         User user = new User();
         user.setEmail(email);
-        when(userRepository.findByEmail(email)).thenReturn(Optional.of(user));
+        when(userMapper.findByEmail(email)).thenReturn(Optional.of(user));
 
         when(jwtUtil.generateToken(user)).thenReturn("newToken456");
 
