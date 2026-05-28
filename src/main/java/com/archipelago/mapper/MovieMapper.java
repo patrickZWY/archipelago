@@ -13,5 +13,7 @@ public interface MovieMapper {
 
     int countByTitle(@Param("title") String title);
 
-    List<Movie> searchMovies(@Param("title") String title);
+    List<Movie> findAll();
+
+    List<Movie> searchMovies(@Param("title") String title, @Param("limit") int limit);
 }

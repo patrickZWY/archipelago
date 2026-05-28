@@ -1,14 +1,15 @@
 package com.archipelago.service;
 
+import com.archipelago.dto.request.CreateConnectionRequest;
+import com.archipelago.dto.request.UpdateConnectionRequest;
 import com.archipelago.model.Connection;
-import com.archipelago.model.User;
 
 import java.util.List;
 
 public interface ConnectionService {
-    Connection addConnection(User user, Long fromMovieId, Long toMovieId, String reason);
-    List<Connection> getConnectionsByUser(User user);
+    List<Connection> getConnectionsForCurrentUser();
+    List<Connection> getConnectionsForCurrentUserByMovie(Long movieId);
+    Connection createConnection(CreateConnectionRequest request);
+    Connection updateConnection(Long connectionId, UpdateConnectionRequest request);
     void deleteConnection(Long connectionId);
-    Connection updateConnection(Long connectionId, String newReason);
 }
-

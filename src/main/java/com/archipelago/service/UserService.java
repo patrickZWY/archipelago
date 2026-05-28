@@ -8,4 +8,3 @@ public interface UserService {
     void updateProfile(UpdateProfileRequest request);
     void deleteCurrentUser();
 }
-

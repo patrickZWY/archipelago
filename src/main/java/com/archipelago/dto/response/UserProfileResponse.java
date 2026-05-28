@@ -1,16 +1,16 @@
 package com.archipelago.dto.response;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.archipelago.model.User;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class UserProfileResponse {
-    private String username;
-    private String email;
-    private boolean enabled;
+public record UserProfileResponse(Long id, String username, String email, boolean enabled, boolean verified) {
+
+    public static UserProfileResponse from(User user) {
+        return new UserProfileResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.isEnabled(),
+                user.isVerified()
+        );
+    }
 }

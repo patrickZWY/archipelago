@@ -1,15 +1,22 @@
 package com.archipelago.controller;
 
-import com.archipelago.auth.AuthController;
-import com.archipelago.model.Connection;
-import com.archipelago.model.User;
+import com.archipelago.dto.request.CreateConnectionRequest;
+import com.archipelago.dto.request.UpdateConnectionRequest;
+import com.archipelago.dto.response.ConnectionResponse;
 import com.archipelago.service.ConnectionService;
 import com.archipelago.util.ApiResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
@@ -19,42 +26,34 @@ import java.util.List;
 public class ConnectionController {
 
     private final ConnectionService connectionService;
-    private static final Logger logger = LoggerFactory.getLogger(ConnectionController.class);
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Connection>>> getConnections(@RequestAttribute User user) {
-        logger.info("Get connections for {}", user.getUsername());
-        List<Connection> connections = connectionService.getConnectionsByUser(user);
-        logger.info("Found {} connections", connections.size());
-        return ResponseEntity.ok(ApiResponse.success(connections, "Connections retrieved success"));
+    public ResponseEntity<ApiResponse<List<ConnectionResponse>>> getConnections() {
+        List<ConnectionResponse> connections = connectionService.getConnectionsForCurrentUser().stream()
+                .map(ConnectionResponse::from)
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success(connections, "Connections retrieved"));
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<Connection>> addConnection(@RequestAttribute User user,
-                                                                 @RequestParam Long fromMovieId,
-                                                                 @RequestParam Long toMovieId,
-                                                                 @RequestParam String reason) {
-        logger.info("Add connection for {}", user.getUsername());
-        Connection connection = connectionService.addConnection(user, fromMovieId, toMovieId, reason);
-        logger.info("Added connection for {}", user.getUsername());
-        return ResponseEntity.ok(ApiResponse.success(connection, "Connection added success"));
+    public ResponseEntity<ApiResponse<ConnectionResponse>> createConnection(@Valid @RequestBody CreateConnectionRequest request) {
+        ConnectionResponse response = ConnectionResponse.from(connectionService.createConnection(request));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(response, "Connection created"));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<Connection>> updateConnection(@PathVariable("id") Long id, @RequestParam String reason) {
-        logger.info("Update connection for {}", id);
-        Connection connection = connectionService.updateConnection(id, reason);
-        logger.info("Updated connection for {}", id);
-        return ResponseEntity.ok(ApiResponse.success(connection, "Connection updated success"));
+    public ResponseEntity<ApiResponse<ConnectionResponse>> updateConnection(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateConnectionRequest request
+    ) {
+        ConnectionResponse response = ConnectionResponse.from(connectionService.updateConnection(id, request));
+        return ResponseEntity.ok(ApiResponse.success(response, "Connection updated"));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteConnection(@PathVariable Long id) {
-        logger.info("Delete connection for {}", id);
         connectionService.deleteConnection(id);
-        logger.info("Deleted connection for {}", id);
-        return ResponseEntity.ok(ApiResponse.success("Connection deleted success"));
+        return ResponseEntity.ok(ApiResponse.success("Connection deleted"));
     }
-
-
 }

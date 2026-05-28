@@ -1,15 +1,30 @@
 package com.archipelago.auth;
 
-import com.archipelago.exception.*;
+import com.archipelago.dto.request.LoginRequest;
+import com.archipelago.dto.request.RegisterRequest;
+import com.archipelago.exception.EmailAlreadyExistsException;
+import com.archipelago.exception.InvalidCredentialsException;
+import com.archipelago.exception.InvalidTokenException;
+import com.archipelago.exception.TooManyLoginAttemptsException;
+import com.archipelago.exception.UserNotFoundException;
 import com.archipelago.mapper.UserMapper;
 import com.archipelago.model.User;
 import com.archipelago.model.enums.Role;
+import com.archipelago.security.AuthenticatedUser;
+import com.archipelago.security.CurrentUserProvider;
 import com.archipelago.service.EmailService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.context.SecurityContextImpl;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -17,158 +32,150 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
-    private static final Logger logger = LoggerFactory.getLogger(AuthServiceImpl.class);
+
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
-    private final JwtUtil jwtUtil;
+    private final CurrentUserProvider currentUserProvider;
+
+    @Value("${app.frontend-base-url}")
+    private String frontendBaseUrl;
+
+    @Value("${app.auth.require-email-verification:false}")
+    private boolean requireEmailVerification;
 
     @Override
-    public User register(String email, String password, String username) {
-        logger.debug("Registering user with email: {}", email);
-
-        if (userMapper.countByEmail(email) > 0) {
-            logger.warn("Registration failed, email already in use: {}", email);
-            throw new EmailAlreadyExistsException("email used already: " + email);
+    public User register(RegisterRequest request) {
+        if (userMapper.countByEmail(request.getEmail()) > 0) {
+            throw new EmailAlreadyExistsException("Email already exists");
+        }
+        if (userMapper.countByUsernameIgnoreCase(request.getUsername()) > 0) {
+            throw new EmailAlreadyExistsException("Username already exists");
         }
 
+        String verificationToken = requireEmailVerification ? UUID.randomUUID().toString() : null;
         User user = User.builder()
-                .email(email)
-                .password(passwordEncoder.encode(password))
-                .username(username)
+                .email(request.getEmail().trim().toLowerCase())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .username(request.getUsername().trim())
                 .role(Role.USER)
                 .enabled(true)
+                .verified(!requireEmailVerification)
+                .verificationToken(verificationToken)
+                .failedLoginAttempts(0)
+                .deleted(false)
                 .build();
-        logger.debug("Password encoded for user with email: {}", email);
-
-        String token = UUID.randomUUID().toString();
-        user.setVerificationToken(token);
-        user.setVerified(false);
-
         userMapper.insert(user);
-        logger.info("User saved in DB with email: {}", user.getEmail());
-        // verification email
-        String verificationLink = "http://localhost:8080/api/auth/verify?token=" + user.getVerificationToken();
-        emailService.sendEmail(email, "Verify your account",
-                "<h1>Welcome to Archipelago!</h1>" +
-                "<p>Click me to verify your account</p>" +
-                "<a href=\"" + verificationLink + "\">Verify Account</a>");
-        System.out.println("Verification token: " + token);
+
+        if (requireEmailVerification) {
+            emailService.sendEmail(
+                    user.getEmail(),
+                    "Verify your Archipelago account",
+                    "<p>Open this link to verify your account:</p><p><a href=\"" +
+                            frontendBaseUrl + "/verify?token=" + verificationToken + "\">Verify account</a></p>"
+            );
+        }
         return user;
     }
 
     @Override
-    public User authenticate(String email, String password) {
-        logger.debug("Authenticating user with email: {}", email);
+    public User authenticate(LoginRequest request) {
+        String email = request.getEmail().trim().toLowerCase();
+        User user = userMapper.findActiveByEmail(email)
+                .orElseThrow(() -> new InvalidCredentialsException("Invalid email or password"));
 
-        User user = userMapper.findByEmail(email)
-                .orElseThrow(() -> {
-                    logger.error("No user found with email: {}", email);
-                    return new InvalidCredentialsException("Invalid email or password");
-                });
         if (user.getLockoutTime() != null && user.getLockoutTime().isAfter(LocalDateTime.now())) {
-            logger.warn("Too many login attempts for email: {}", email);
-            throw new TooManyLoginAttemptsException("User locked until:" + user.getLockoutTime());
-        }
-        if (!passwordEncoder.matches(password, user.getPassword())) {
-            user.setFailedLoginAttempts(user.getFailedLoginAttempts() + 1);
-
-            if (user.getFailedLoginAttempts() >= 5) {
-                user.setLockoutTime(LocalDateTime.now().plusMinutes(10));
-                userMapper.update(user);
-                logger.warn("User locked until: {}", user.getLockoutTime());
-                throw new TooManyLoginAttemptsException("Account locked for 10 minutes");
-            }
-            userMapper.update(user);
-            logger.warn("Invalid password or email for email: {}", email);
-            throw new InvalidCredentialsException("Invalid email or password");
+            throw new TooManyLoginAttemptsException("Account locked until " + user.getLockoutTime());
         }
         if (!user.isVerified()) {
-            logger.warn("User is not verified with email: {}", email);
-            throw new InvalidCredentialsException("Account unverified. Check email.");
+            throw new InvalidCredentialsException("Account verification is still required");
         }
-        // successful login and reset
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            int failedAttempts = user.getFailedLoginAttempts() + 1;
+            user.setFailedLoginAttempts(failedAttempts);
+            if (failedAttempts >= 5) {
+                user.setLockoutTime(LocalDateTime.now().plusMinutes(10));
+            }
+            userMapper.update(user);
+            if (failedAttempts >= 5) {
+                throw new TooManyLoginAttemptsException("Too many failed login attempts");
+            }
+            throw new InvalidCredentialsException("Invalid email or password");
+        }
+
         user.setFailedLoginAttempts(0);
         user.setLockoutTime(null);
         userMapper.update(user);
-        logger.info("User authenticated with email: {}", user.getEmail());
-
         return user;
     }
 
     @Override
-    public void logout(String token) {
-        logger.debug("Logout user attempt with token: {}", token);
-        jwtUtil.invalidateToken(token);
-        logger.info("User logged out with token: {}", token);
+    public void startSession(User user, HttpServletRequest request) {
+        HttpSession session = request.getSession(true);
+        request.changeSessionId();
+        AuthenticatedUser principal = AuthenticatedUser.from(user);
+        UsernamePasswordAuthenticationToken authentication =
+                UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.getAuthorities());
+        SecurityContext context = new SecurityContextImpl(authentication);
+        SecurityContextHolder.setContext(context);
+        session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
     }
 
     @Override
-    public String refreshToken(String oldToken) {
-        logger.debug("Refreshing token: {}", oldToken);
-        if (!jwtUtil.validateToken(oldToken)) {
-            logger.warn("Token invalid or expired: {}", oldToken);
-            throw new InvalidTokenException("Token is invalid or expired");
+    public void logout(HttpServletRequest request) {
+        SecurityContextHolder.clearContext();
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
         }
+    }
 
-        String email = jwtUtil.getEmailFromToken(oldToken);
-        logger.debug("Retrieved email from old token: {}", email);
-        User user = userMapper.findByEmail(email)
-                .orElseThrow(() ->
-                {
-                    logger.error("No user found with email: {}", email);
-                    return new UserNotFoundException("User not found for email: " + email);
-                });
+    @Override
+    public User getSessionUser() {
+        return currentUserProvider.getCurrentUser();
+    }
 
-        String newToken = jwtUtil.generateToken(user);
-        logger.info("Generated new token for user: {}", email);
-        return newToken;
+    @Override
+    public void verifyAccount(String token) {
+        User user = userMapper.findByVerificationToken(token)
+                .orElseThrow(() -> new InvalidTokenException("Invalid verification token"));
+        user.setVerified(true);
+        user.setVerificationToken(null);
+        userMapper.update(user);
     }
 
     @Override
     public void handleForgotPassword(String email) {
-        logger.info("Handle forgot password attempt for email {}", email);
-        User user = userMapper.findByEmail(email)
-                .orElseThrow(() ->
-                {
-                    logger.error("No user found with email: {}", email);
-                    return new UserNotFoundException("User not found for email: " + email);
-                });
-
-        String token = UUID.randomUUID().toString();
-        logger.info("New token generated for user: {}", email);
-        user.setPasswordResetToken(token);
-        user.setPasswordResetTokenExpireTime(LocalDateTime.now().plusHours(1));
-        logger.info("New password reset token generated for user: {}", email);
-        userMapper.update(user);
-        logger.info("Handle forgot password success for user: {}", email);
-
-        String resetLink = "http://localhost:8080/api/auth/reset-password?token=" + token;
-        emailService.sendEmail(email, "Reset Your Password",
-                "<h1>Reset Password Request</h1>" +
-                        "<p>Click the link below to reset your password:</p>" +
-                        "<a href=\"" + resetLink + "\">Reset Password</a>");
+        userMapper.findActiveByEmail(email.trim().toLowerCase()).ifPresent(user -> {
+            String token = UUID.randomUUID().toString();
+            user.setPasswordResetToken(token);
+            user.setPasswordResetTokenExpireTime(LocalDateTime.now().plusHours(1));
+            userMapper.update(user);
+            emailService.sendEmail(
+                    user.getEmail(),
+                    "Reset your Archipelago password",
+                    "<p>Open this link to reset your password:</p><p><a href=\"" +
+                            frontendBaseUrl + "/reset-password?token=" + token + "\">Reset password</a></p>"
+            );
+        });
     }
 
     @Override
     public void resetPassword(String token, String newPassword) {
-        logger.info("Reset password attempt for user: {}", token);
-        User user = userMapper.findByPasswordResetToken(token)
-                .orElseThrow(() ->
-                {
-                    logger.error("No user found with token: {}", token);
-                    return new InvalidTokenException("Invalid or expired reset token");
-                });
-
-        if (user.getPasswordResetTokenExpireTime().isBefore(LocalDateTime.now())) {
-            logger.error("Password reset token expired");
-            throw new InvalidTokenException("Reset token expired");
+        if (!StringUtils.hasText(token)) {
+            throw new InvalidTokenException("Missing reset token");
         }
-
+        User user = userMapper.findByPasswordResetToken(token)
+                .orElseThrow(() -> new InvalidTokenException("Invalid or expired reset token"));
+        if (user.getPasswordResetTokenExpireTime() == null ||
+                user.getPasswordResetTokenExpireTime().isBefore(LocalDateTime.now())) {
+            throw new InvalidTokenException("Invalid or expired reset token");
+        }
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setPasswordResetToken(null);
         user.setPasswordResetTokenExpireTime(null);
+        user.setFailedLoginAttempts(0);
+        user.setLockoutTime(null);
         userMapper.update(user);
-        logger.info("Password reset success");
     }
 }

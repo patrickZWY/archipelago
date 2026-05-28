@@ -5,100 +5,56 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleAllUncaughtExceptions(Exception ex) {
-        log.error(ex.getMessage(), ex);
-        ApiResponse<Void> response = new ApiResponse<>(
-                false,
-                null,
-                "An unexpected error happened: " + ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleValidation(MethodArgumentNotValidException exception) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (FieldError fieldError : exception.getBindingResult().getFieldErrors()) {
+            errors.put(fieldError.getField(), fieldError.getDefaultMessage());
+        }
+        return ResponseEntity.badRequest().body(ApiResponse.error(errors, "Validation failed"));
     }
 
     @ExceptionHandler(EmailAlreadyExistsException.class)
-    public ResponseEntity<ApiResponse<Void>> handleEmailAlreadyExistsException(Exception ex) {
-        log.error(ex.getMessage(), ex);
-        ApiResponse<Void> response = new ApiResponse<>(
-                false,
-                null,
-                "email already exists: " + ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    public ResponseEntity<ApiResponse<Void>> handleEmailAlreadyExists(EmailAlreadyExistsException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(exception.getMessage()));
     }
 
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<ApiResponse<Void>> handleIllegalStateException(Exception ex) {
-        log.error(ex.getMessage(), ex);
-        ApiResponse<Void> response = new ApiResponse<>(
-                false,
-                null,
-                "Illegal state: " + ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-    }
-
-    @ExceptionHandler(InvalidTokenException.class)
-    public ResponseEntity<ApiResponse<Void>> handleInvalidTokenException(Exception ex) {
-        log.error(ex.getMessage(), ex);
-        ApiResponse<Void> response = new ApiResponse<>(
-                false,
-                null,
-                "Invalid token: " + ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
-    }
-
-    @ExceptionHandler(InvalidCredentialsException.class)
-    public ResponseEntity<ApiResponse<Void>> handleInvalidCredentialsException(Exception ex) {
-        log.error(ex.getMessage(), ex);
-        ApiResponse<Void> response = new ApiResponse<>(
-                false,
-                null,
-                "Invalid credentials: " + ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
-    }
-
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleResourceNotFoundException(Exception ex) {
-        log.error(ex.getMessage(), ex);
-        ApiResponse<Void> response = new ApiResponse<>(
-                false,
-                null,
-                "Resource not found: " + ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    @ExceptionHandler({InvalidTokenException.class, InvalidCredentialsException.class})
+    public ResponseEntity<ApiResponse<Void>> handleUnauthorized(RuntimeException exception) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error(exception.getMessage()));
     }
 
     @ExceptionHandler(TooManyLoginAttemptsException.class)
-    public ResponseEntity<ApiResponse<Void>> handleTooManyLoginAttemptsException(Exception ex) {
-        log.error(ex.getMessage(), ex);
-        ApiResponse<Void> response = new ApiResponse<>(
-                false,
-                null,
-                "Too many login attempts: " + ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+    public ResponseEntity<ApiResponse<Void>> handleTooManyLoginAttempts(TooManyLoginAttemptsException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ApiResponse.error(exception.getMessage()));
     }
 
-    @ExceptionHandler(UserNotFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleUserNotFoundException(Exception ex) {
-        log.error(ex.getMessage(), ex);
-        ApiResponse<Void> response = new ApiResponse<>(
-                false,
-                null,
-                "User not found: " + ex.getMessage()
-        );
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    @ExceptionHandler({ResourceNotFoundException.class, UserNotFoundException.class})
+    public ResponseEntity<ApiResponse<Void>> handleNotFound(RuntimeException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(exception.getMessage()));
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(exception.getMessage()));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnhandled(Exception exception) {
+        logger.error("Unhandled exception", exception);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error("Unexpected server error"));
+    }
 }

@@ -11,14 +11,16 @@ import java.util.Optional;
 public interface UserMapper {
     void insert(User user);
 
-    @Select("SELECT * FROM users WHERE id = #{id}")
-    User findById(@Param("id") Long id);
+    @Select("SELECT * FROM users WHERE id = #{id} AND deleted = FALSE")
+    Optional<User> findActiveById(@Param("id") Long id);
 
     int countByEmail(@Param("email") String email);
 
     int countByUsernameIgnoreCase(@Param("username") String username);
 
-    Optional<User> findByEmail(@Param("email") String email);
+    int countByUsernameIgnoreCaseExcludingId(@Param("username") String username, @Param("id") Long id);
+
+    Optional<User> findActiveByEmail(@Param("email") String email);
 
     Optional<User> findByVerificationToken(@Param("token") String token);
 
@@ -26,8 +28,9 @@ public interface UserMapper {
 
     void update(User user);
 
-    void updateProfile(@Param("email") String email,
+    void updateProfile(@Param("id") Long id,
                        @Param("username") String username,
                        @Param("password") String password);
 
+    void softDeleteById(@Param("id") Long id);
 }

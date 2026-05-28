@@ -4,94 +4,86 @@ import com.archipelago.dto.request.ForgotPasswordRequest;
 import com.archipelago.dto.request.LoginRequest;
 import com.archipelago.dto.request.RegisterRequest;
 import com.archipelago.dto.request.ResetPasswordRequest;
-import com.archipelago.dto.response.AuthResponse;
-import com.archipelago.exception.UserNotFoundException;
+import com.archipelago.dto.response.SessionResponse;
+import com.archipelago.dto.response.UserSummaryResponse;
 import com.archipelago.model.User;
-import com.archipelago.mapper.UserMapper;
 import com.archipelago.util.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
+
     private final AuthService authService;
-    private final JwtUtil jwtUtil;
-    private final UserMapper userMapper;
-    private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
 
     @PostMapping("/register")
-    public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request) {
-        logger.info("Received registration request for email: {}", request.getEmail());
-        User user = authService.register(request.getEmail(), request.getPassword(), request.getUsername());
-        String token = jwtUtil.generateToken(user);
-        logger.debug("Generated token for user with email: {}", user.getEmail());
-        ApiResponse<AuthResponse> response = ApiResponse.success(new AuthResponse(token), "user registration success");
-        logger.info("Registration success for email: {}", user.getEmail());
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    public ResponseEntity<ApiResponse<SessionResponse>> register(
+            @Valid @RequestBody RegisterRequest request,
+            HttpServletRequest httpServletRequest
+    ) {
+        User user = authService.register(request);
+        authService.startSession(user, httpServletRequest);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(SessionResponse.authenticated(user), "Registration successful"));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
-        logger.info("Login attempt for email: {}", request.getEmail());
-        User user = authService.authenticate(request.getEmail(), request.getPassword());
-        logger.debug("Generated token for user with email: {}", user.getEmail());
-        String token = jwtUtil.generateToken(user);
-        ApiResponse<AuthResponse> response = ApiResponse.success(new AuthResponse(token), "login success");
-        logger.info("Login success for email: {}", user.getEmail());
-        return ResponseEntity.ok(response);
+    public ResponseEntity<ApiResponse<SessionResponse>> login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletRequest httpServletRequest
+    ) {
+        User user = authService.authenticate(request);
+        authService.startSession(user, httpServletRequest);
+        return ResponseEntity.ok(ApiResponse.success(SessionResponse.authenticated(user), "Login successful"));
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout(@RequestHeader("Authorization") String token) {
-        logger.info("Logout attempt with token: {}", token);
-        authService.logout(token);
-        logger.info("Logout successful for token: {}", token);
-        return ResponseEntity.ok(ApiResponse.success(null, "logout success"));
-
+    public ResponseEntity<ApiResponse<Void>> logout(HttpServletRequest request) {
+        authService.logout(request);
+        return ResponseEntity.ok(ApiResponse.success("Logout successful"));
     }
 
-    @PostMapping("/refresh")
-    public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(@RequestHeader("Authorization") String token) {
-        logger.info("Token refresh attempt for token: {}", token);
-        String newToken = authService.refreshToken(token);
-        logger.debug("New token generated after refresh: {}", newToken);
-        ApiResponse<AuthResponse> response = ApiResponse.success(new AuthResponse(newToken), "Token refresh success");
-        logger.info("Token refresh success");
-        return ResponseEntity.ok(response);
+    @GetMapping("/session")
+    public ResponseEntity<ApiResponse<SessionResponse>> session(Authentication authentication, CsrfToken csrfToken) {
+        csrfToken.getToken();
+        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+            return ResponseEntity.ok(ApiResponse.success(SessionResponse.anonymous(), "Session loaded"));
+        }
+        User user = authService.getSessionUser();
+        return ResponseEntity.ok(ApiResponse.success(
+                new SessionResponse(true, UserSummaryResponse.from(user)),
+                "Session loaded"
+        ));
     }
 
     @GetMapping("/verify")
     public ResponseEntity<ApiResponse<Void>> verify(@RequestParam String token) {
-        logger.info("Verify attempt for token: {}", token);
-        User user = userMapper.findByVerificationToken(token)
-                .orElseThrow(() -> new UserNotFoundException("Invalid verification token"));
-        user.setVerified(true);
-        user.setVerificationToken(null);
-        userMapper.update(user);
-        logger.info("Verify successful for token: {}", token);
-        return ResponseEntity.ok(ApiResponse.success("Account verification success"));
+        authService.verifyAccount(token);
+        return ResponseEntity.ok(ApiResponse.success("Account verified"));
     }
 
     @PostMapping("/forgot-password")
-    public ResponseEntity<ApiResponse<Void>> forgotPassword(@RequestBody ForgotPasswordRequest request) {
-        logger.info("Forgot password attempt for email: {}", request.getEmail());
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         authService.handleForgotPassword(request.getEmail());
-        logger.info("Forgot password handled for email: {}", request.getEmail());
-        return ResponseEntity.ok(ApiResponse.success("Reset link sent."));
+        return ResponseEntity.ok(ApiResponse.success("If the account exists, a reset link has been issued"));
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<ApiResponse<Void>> resetPassword(@RequestBody ResetPasswordRequest request) {
-        logger.info("Reset password attempt for token: {}", request.getToken());
+    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request.getToken(), request.getNewPassword());
-        logger.info("Reset password success for token: {}", request.getToken());
-        return ResponseEntity.ok(ApiResponse.success("Password reset success"));
+        return ResponseEntity.ok(ApiResponse.success("Password updated"));
     }
 }

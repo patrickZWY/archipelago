@@ -5,42 +5,106 @@
 <mapper namespace="com.archipelago.mapper.ConnectionMapper">
 
     <resultMap id="ConnectionResultMap" type="com.archipelago.model.Connection">
-        <id property="id" column="id" />
+        <id property="id" column="connection_id"/>
         <result property="reason" column="reason"/>
         <result property="weight" column="weight"/>
         <result property="category" column="category"/>
-        <result property="user" column="user_id"/>
-        <association property="fromMovie" column="from_movie_id"
-                     javaType="com.archipelago.model.Movie"
-                     select="com.archipelago.mapper.MovieMapper.findById"/>
-        <association property="toMovie" column="to_movie_id"
-                     javaType="com.archipelago.model.Movie"
-                     select="com.archipelago.mapper.MovieMapper.findById"/>
+        <association property="fromMovie" javaType="com.archipelago.model.Movie">
+            <id property="id" column="from_movie_id"/>
+            <result property="title" column="from_movie_title"/>
+            <result property="releaseYear" column="from_release_year"/>
+            <result property="director" column="from_director"/>
+            <result property="pictureUrl" column="from_picture_url"/>
+            <result property="externalId" column="from_external_id"/>
+        </association>
+        <association property="toMovie" javaType="com.archipelago.model.Movie">
+            <id property="id" column="to_movie_id"/>
+            <result property="title" column="to_movie_title"/>
+            <result property="releaseYear" column="to_release_year"/>
+            <result property="director" column="to_director"/>
+            <result property="pictureUrl" column="to_picture_url"/>
+            <result property="externalId" column="to_external_id"/>
+        </association>
     </resultMap>
 
-    <select id="findByUserId" parameterType="long" resultMap="ConnectionResultMap">
-        SELECT * FROM connections WHERE user_id = #{userId}
+    <sql id="ConnectionSelect">
+        SELECT
+            c.id AS connection_id,
+            c.reason,
+            c.weight,
+            c.category,
+            fm.id AS from_movie_id,
+            fm.title AS from_movie_title,
+            fm.release_year AS from_release_year,
+            fm.director AS from_director,
+            fm.picture_url AS from_picture_url,
+            fm.external_id AS from_external_id,
+            tm.id AS to_movie_id,
+            tm.title AS to_movie_title,
+            tm.release_year AS to_release_year,
+            tm.director AS to_director,
+            tm.picture_url AS to_picture_url,
+            tm.external_id AS to_external_id
+        FROM connections c
+        JOIN movies fm ON fm.id = c.from_movie_id
+        JOIN movies tm ON tm.id = c.to_movie_id
+    </sql>
+
+    <select id="findByUserId" resultMap="ConnectionResultMap">
+        <include refid="ConnectionSelect"/>
+        WHERE c.user_id = #{userId}
+        ORDER BY c.update_time DESC, c.id DESC
+    </select>
+
+    <select id="findByUserIdAndMovieId" resultMap="ConnectionResultMap">
+        <include refid="ConnectionSelect"/>
+        WHERE c.user_id = #{userId}
+          AND (c.from_movie_id = #{movieId} OR c.to_movie_id = #{movieId})
+        ORDER BY c.update_time DESC, c.id DESC
     </select>
 
     <insert id="insert" parameterType="com.archipelago.model.Connection" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO connections (from_movie_id, to_movie_id, reason, weight, category, user_id)
-            VALUES (#{fromMovie.id}, #{toMovie.id}, #{reason}, #{weight}, #{category}, #{user.id})
+        INSERT INTO connections (
+            from_movie_id,
+            to_movie_id,
+            reason,
+            weight,
+            category,
+            user_id,
+            creation_time,
+            update_time
+        ) VALUES (
+            #{fromMovie.id},
+            #{toMovie.id},
+            #{reason},
+            #{weight},
+            #{category},
+            #{user.id},
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        )
     </insert>
 
-    <select id="findById" parameterType="long" resultMap="ConnectionResultMap">
-        SELECT * FROM connections WHERE id = #{id}
+    <select id="findByIdAndUserId" resultMap="ConnectionResultMap">
+        <include refid="ConnectionSelect"/>
+        WHERE c.id = #{id}
+          AND c.user_id = #{userId}
     </select>
 
     <update id="update" parameterType="com.archipelago.model.Connection">
         UPDATE connections
         SET reason = #{reason},
             weight = #{weight},
-            category = #{category}
+            category = #{category},
+            update_time = CURRENT_TIMESTAMP
         WHERE id = #{id}
+          AND user_id = #{user.id}
     </update>
 
-    <delete id="delete" parameterType="long">
-        DELETE FROM connections WHERE id = #{id}
+    <delete id="deleteByIdAndUserId">
+        DELETE FROM connections
+        WHERE id = #{id}
+          AND user_id = #{userId}
     </delete>
 
 </mapper>

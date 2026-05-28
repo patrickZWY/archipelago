@@ -4,40 +4,37 @@ import com.archipelago.dto.request.UpdateProfileRequest;
 import com.archipelago.dto.response.UserProfileResponse;
 import com.archipelago.service.UserService;
 import com.archipelago.util.ApiResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
 public class UserController {
+
     private final UserService userService;
-    private final Logger logger = LoggerFactory.getLogger(UserController.class);
 
     @GetMapping("/profile")
     public ResponseEntity<ApiResponse<UserProfileResponse>> getProfile() {
-        logger.info("Get profile");
-        UserProfileResponse profile = userService.getProfile();
-        logger.info(profile.toString());
-        return ResponseEntity.ok(new ApiResponse<>(true, profile, "Profile retrieved successfully"));
+        return ResponseEntity.ok(ApiResponse.success(userService.getProfile(), "Profile retrieved"));
     }
 
     @PutMapping("/profile")
-    public ResponseEntity<ApiResponse<Void>> updateProfile(@RequestBody UpdateProfileRequest request) {
-        logger.info("Update profile");
+    public ResponseEntity<ApiResponse<Void>> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
         userService.updateProfile(request);
-        logger.info(request.toString());
-        return ResponseEntity.ok(ApiResponse.success("Profile updated success"));
+        return ResponseEntity.ok(ApiResponse.success("Profile updated"));
     }
 
-    @DeleteMapping("/delete")
+    @DeleteMapping("/profile")
     public ResponseEntity<ApiResponse<Void>> deleteAccount() {
-        logger.info("Delete account");
         userService.deleteCurrentUser();
-        logger.info("Account deleted successfully");
-        return ResponseEntity.ok(ApiResponse.success("Account deletion success"));
+        return ResponseEntity.ok(ApiResponse.success("Account deleted"));
     }
 }

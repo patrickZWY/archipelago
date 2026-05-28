@@ -11,12 +11,13 @@ import java.util.Optional;
 public interface ConnectionMapper {
     List<Connection> findByUserId(@Param("userId") Long userId);
 
+    List<Connection> findByUserIdAndMovieId(@Param("userId") Long userId, @Param("movieId") Long movieId);
+
     void insert(Connection connection);
 
-    Optional<Connection> findById(@Param("id") Long id);
+    Optional<Connection> findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
     void update(Connection connection);
 
-    void delete(@Param("id") Long id);
-
+    void deleteByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 }

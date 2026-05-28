@@ -20,9 +20,15 @@
         SELECT COUNT(*) FROM movies WHERE title = #{title}
     </select>
 
-    <select id="searchMovies" parameterType="String" resultMap="MovieResultMap">
+    <select id="findAll" resultMap="MovieResultMap">
+        SELECT * FROM movies ORDER BY title ASC
+    </select>
+
+    <select id="searchMovies" resultMap="MovieResultMap">
         SELECT * FROM movies
         WHERE LOWER(title) LIKE CONCAT('%', LOWER(#{title}), '%')
+        ORDER BY title ASC
+        LIMIT #{limit}
     </select>
 
 </mapper>

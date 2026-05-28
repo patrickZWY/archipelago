@@ -1,15 +1,17 @@
 package com.archipelago.service.impl;
 
+import com.archipelago.dto.request.CreateConnectionRequest;
+import com.archipelago.dto.request.UpdateConnectionRequest;
+import com.archipelago.exception.IllegalStateException;
 import com.archipelago.exception.ResourceNotFoundException;
 import com.archipelago.mapper.ConnectionMapper;
 import com.archipelago.mapper.MovieMapper;
 import com.archipelago.model.Connection;
 import com.archipelago.model.Movie;
 import com.archipelago.model.User;
+import com.archipelago.security.CurrentUserProvider;
 import com.archipelago.service.ConnectionService;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -17,55 +19,66 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ConnectionServiceImpl implements ConnectionService {
-    private final Logger logger = LoggerFactory.getLogger(ConnectionServiceImpl.class);
+
     private final ConnectionMapper connectionMapper;
     private final MovieMapper movieMapper;
+    private final CurrentUserProvider currentUserProvider;
 
     @Override
-    public Connection addConnection(User user, Long fromMovieId, Long toMovieId, String reason) {
-        logger.info("Adding connection for user {} from {} to {}", user.getId(), fromMovieId, toMovieId);
-        Movie fromMovie = movieMapper.findById(fromMovieId)
-                .orElseThrow(() -> new ResourceNotFoundException("From movie not found"));
-        Movie toMovie = movieMapper.findById(toMovieId)
-                .orElseThrow(() -> new ResourceNotFoundException("To movie not found"));
+    public List<Connection> getConnectionsForCurrentUser() {
+        return connectionMapper.findByUserId(currentUserProvider.getCurrentUser().getId());
+    }
+
+    @Override
+    public List<Connection> getConnectionsForCurrentUserByMovie(Long movieId) {
+        User user = currentUserProvider.getCurrentUser();
+        movieMapper.findById(movieId).orElseThrow(() -> new ResourceNotFoundException("Movie not found"));
+        return connectionMapper.findByUserIdAndMovieId(user.getId(), movieId);
+    }
+
+    @Override
+    public Connection createConnection(CreateConnectionRequest request) {
+        if (request.fromMovieId().equals(request.toMovieId())) {
+            throw new IllegalStateException("A connection must reference two different movies");
+        }
+        User user = currentUserProvider.getCurrentUser();
+        Movie fromMovie = movieMapper.findById(request.fromMovieId())
+                .orElseThrow(() -> new ResourceNotFoundException("Source movie not found"));
+        Movie toMovie = movieMapper.findById(request.toMovieId())
+                .orElseThrow(() -> new ResourceNotFoundException("Target movie not found"));
 
         Connection connection = Connection.builder()
                 .fromMovie(fromMovie)
                 .toMovie(toMovie)
-                .reason(reason)
+                .reason(request.reason().trim())
+                .weight(request.weight() == null ? 1.0 : request.weight())
+                .category(request.category() == null ? null : request.category().trim())
                 .user(user)
                 .build();
         connectionMapper.insert(connection);
-        logger.info("Added connection for user {} from {} to {}", user.getId(), fromMovieId, toMovieId);
-        return connection;
+        return connectionMapper.findByIdAndUserId(connection.getId(), user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Connection was not created"));
     }
 
     @Override
-    public List<Connection> getConnectionsByUser(User user) {
-        logger.info("Getting connections for user {}", user.getId());
-        List<Connection> connections = connectionMapper.findByUserId(user.getId());
-        logger.info("Found {} connections", connections.size());
-        return connections;
+    public Connection updateConnection(Long connectionId, UpdateConnectionRequest request) {
+        User user = currentUserProvider.getCurrentUser();
+        Connection connection = connectionMapper.findByIdAndUserId(connectionId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Connection not found"));
+        connection.setUser(user);
+        connection.setReason(request.reason().trim());
+        connection.setWeight(request.weight() == null ? connection.getWeight() : request.weight());
+        connection.setCategory(request.category() == null ? null : request.category().trim());
+        connectionMapper.update(connection);
+        return connectionMapper.findByIdAndUserId(connectionId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Connection not found"));
     }
 
     @Override
     public void deleteConnection(Long connectionId) {
-        logger.info("Deleting connection with id {}", connectionId);
-        connectionMapper.findById(connectionId)
+        User user = currentUserProvider.getCurrentUser();
+        connectionMapper.findByIdAndUserId(connectionId, user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Connection not found"));
-        connectionMapper.delete(connectionId);
-        logger.info("Deleted connection with id {}", connectionId);
-    }
-
-    @Override
-    public Connection updateConnection(Long connectionId, String newReason) {
-        logger.info("Updating connection with id {}", connectionId);
-        Connection connection = connectionMapper.findById(connectionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Connection not found"));
-        connection.setReason(newReason);
-        connectionMapper.update(connection);
-        logger.info("Updated connection with id {}", connectionId);
-        return connection;
+        connectionMapper.deleteByIdAndUserId(connectionId, user.getId());
     }
 }
-

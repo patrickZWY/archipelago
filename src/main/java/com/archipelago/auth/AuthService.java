@@ -1,12 +1,17 @@
 package com.archipelago.auth;
 
+import com.archipelago.dto.request.LoginRequest;
+import com.archipelago.dto.request.RegisterRequest;
 import com.archipelago.model.User;
+import jakarta.servlet.http.HttpServletRequest;
 
 public interface AuthService {
-    User register(String email, String password, String username);
-    User authenticate(String email, String password);
-    void logout(String token);
-    String refreshToken(String oldToken);
+    User register(RegisterRequest request);
+    User authenticate(LoginRequest request);
+    void startSession(User user, HttpServletRequest request);
+    void logout(HttpServletRequest request);
+    User getSessionUser();
+    void verifyAccount(String token);
     void handleForgotPassword(String email);
     void resetPassword(String token, String newPassword);
 }

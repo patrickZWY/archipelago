@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: archipelago
+      POSTGRES_USER: archipelago_user
+      POSTGRES_PASSWORD: change-me
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  mailpit:
+    image: axllent/mailpit:v1.20
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  postgres-data:

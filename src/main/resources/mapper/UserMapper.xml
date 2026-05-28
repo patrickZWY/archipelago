@@ -21,29 +21,63 @@
         <result property="role" column="role"/>
     </resultMap>
 
+    <insert id="insert" parameterType="com.archipelago.model.User" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO users (
+            email,
+            password,
+            username,
+            role,
+            enabled,
+            verification_token,
+            verified,
+            failed_login_attempts,
+            deleted,
+            creation_time,
+            update_time
+        ) VALUES (
+            #{email},
+            #{password},
+            #{username},
+            #{role},
+            #{enabled},
+            #{verificationToken},
+            #{verified},
+            #{failedLoginAttempts},
+            #{deleted},
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        )
+    </insert>
+
     <select id="countByEmail" parameterType="String" resultType="int">
         SELECT COUNT(*) FROM users WHERE LOWER(email) = LOWER(#{email})
     </select>
-
-    <insert id="insert" parameterType="com.archipelago.model.User" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO users (email, password, username, role, enabled, verification_token, verified, creation_time, update_time)
-        VALUES (#{email}, #{password}, #{username}, #{role}, #{enabled}, #{verificationToken}, #{verified}, NOW(), NOW())
-    </insert>
 
     <select id="countByUsernameIgnoreCase" parameterType="String" resultType="int">
         SELECT COUNT(*) FROM users WHERE LOWER(username) = LOWER(#{username})
     </select>
 
-    <select id="findByEmail" parameterType="String" resultMap="UserResultMap">
-        SELECT * FROM users WHERE email = #{email}
+    <select id="countByUsernameIgnoreCaseExcludingId" resultType="int">
+        SELECT COUNT(*)
+        FROM users
+        WHERE LOWER(username) = LOWER(#{username})
+          AND id != #{id}
+          AND deleted = FALSE
+    </select>
+
+    <select id="findActiveByEmail" parameterType="String" resultMap="UserResultMap">
+        SELECT *
+        FROM users
+        WHERE LOWER(email) = LOWER(#{email})
+          AND deleted = FALSE
     </select>
 
     <select id="findByVerificationToken" parameterType="String" resultMap="UserResultMap">
-        SELECT * FROM users WHERE verification_token = #{token}
+        SELECT * FROM users WHERE verification_token = #{token} AND deleted = FALSE
     </select>
 
     <select id="findByPasswordResetToken" parameterType="String" resultMap="UserResultMap">
-        SELECT * FROM users WHERE password_reset_token = #{token}
+        SELECT * FROM users WHERE password_reset_token = #{token} AND deleted = FALSE
     </select>
 
     <update id="update" parameterType="com.archipelago.model.User">
@@ -57,7 +91,8 @@
             failed_login_attempts = #{failedLoginAttempts},
             lockout_time = #{lockoutTime},
             enabled = #{enabled},
-            update_time = NOW()
+            deleted = #{deleted},
+            update_time = CURRENT_TIMESTAMP
         WHERE id = #{id}
     </update>
 
@@ -65,7 +100,16 @@
         UPDATE users
         SET username = #{username},
             password = #{password},
-            update_time = NOW()
-        WHERE email = #{email}
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND deleted = FALSE
+    </update>
+
+    <update id="softDeleteById">
+        UPDATE users
+        SET deleted = TRUE,
+            enabled = FALSE,
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
     </update>
 </mapper>
