@@ -8,7 +8,7 @@ import java.util.List;
 
 public interface ConnectionService {
     List<Connection> getConnectionsForCurrentUser();
-    List<Connection> getConnectionsForCurrentUserByMovie(Long movieId);
+    List<Connection> getConnectionsForCurrentUserByMovieComponent(Long movieId);
     Connection createConnection(CreateConnectionRequest request);
     Connection updateConnection(Long connectionId, UpdateConnectionRequest request);
     void deleteConnection(Long connectionId);

@@ -3,6 +3,7 @@ package com.archipelago.integration;
 import com.archipelago.mapper.UserMapper;
 import com.archipelago.model.User;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -91,6 +92,55 @@ class ArchipelagoIntegrationTest {
                                 {"email":"user2@example.com","password":"secret123","username":"user2"}
                                 """))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void registerValidationErrorsUseFieldKeyedApiEnvelope() throws Exception {
+        CsrfContext csrf = fetchCsrf(null);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/register")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"invalid-email","password":"short","username":"xy"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.data.email").value("Email must be valid"))
+                .andExpect(jsonPath("$.data.password").value("Password must be between 8 and 128 characters long"))
+                .andExpect(jsonPath("$.data.username").value("Username must be between 3 and 50 characters long"))
+                .andReturn();
+
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
+        assertThat(data.isObject()).isTrue();
+        assertThat(data.fieldNames()).toIterable().contains("email", "password", "username");
+    }
+
+    @Test
+    void loginValidationErrorsUseFieldKeyedApiEnvelope() throws Exception {
+        CsrfContext csrf = fetchCsrf(null);
+
+        MvcResult result = mockMvc.perform(post("/api/auth/login")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"invalid-email","password":""}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.data.email").value("Email must be valid"))
+                .andExpect(jsonPath("$.data.password").value("Password is required"))
+                .andReturn();
+
+        JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
+        assertThat(data.isObject()).isTrue();
+        assertThat(data.fieldNames()).toIterable().contains("email", "password");
     }
 
     @Test
@@ -194,12 +244,40 @@ class ArchipelagoIntegrationTest {
         long connectionId = objectMapper.readTree(createResult.getResponse().getContentAsString())
                 .path("data").path("id").asLong();
 
+        user1Csrf = fetchCsrf(user1Session);
+        mockMvc.perform(post("/api/connections")
+                        .session(user1Csrf.session())
+                        .cookie(user1Csrf.cookie())
+                        .header(user1Csrf.headerName(), user1Csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromMovieId":2,"toMovieId":3,"reason":"Memory puzzle lineage","weight":1.2,"category":"structure"}
+                                """))
+                .andExpect(status().isCreated());
+
+        user1Csrf = fetchCsrf(user1Session);
+        mockMvc.perform(post("/api/connections")
+                        .session(user1Csrf.session())
+                        .cookie(user1Csrf.cookie())
+                        .header(user1Csrf.headerName(), user1Csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromMovieId":4,"toMovieId":5,"reason":"Separate branch","weight":1.0,"category":"genre"}
+                                """))
+                .andExpect(status().isCreated());
+
         mockMvc.perform(get("/api/movies/1/connections").session(user1Session))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.connections.length()").value(1));
+                .andExpect(jsonPath("$.message").value("Movie graph retrieved"))
+                .andExpect(jsonPath("$.data.movie.id").value(1))
+                .andExpect(jsonPath("$.data.connections.length()").value(2))
+                .andExpect(jsonPath("$.data.connections[?(@.fromMovieId == 1 && @.toMovieId == 2)]").isNotEmpty())
+                .andExpect(jsonPath("$.data.connections[?(@.fromMovieId == 2 && @.toMovieId == 3)]").isNotEmpty())
+                .andExpect(jsonPath("$.data.connections[?(@.fromMovieId == 4 || @.toMovieId == 4 || @.fromMovieId == 5 || @.toMovieId == 5)]").isEmpty());
 
         mockMvc.perform(get("/api/movies/1/connections").session(user2Session))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.movie.id").value(1))
                 .andExpect(jsonPath("$.data.connections.length()").value(0));
 
         user1Csrf = fetchCsrf(user1Session);
@@ -230,7 +308,8 @@ class ArchipelagoIntegrationTest {
 
         mockMvc.perform(get("/api/connections").session(user1Session))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(0));
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[?(@.id == %s)]", connectionId).isEmpty());
     }
 
     private MockHttpSession registerUser(String email, String password, String username, CsrfContext csrf) throws Exception {

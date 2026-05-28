@@ -36,12 +36,12 @@ public class MovieController {
     @GetMapping("/{movieId}/connections")
     public ResponseEntity<ApiResponse<MovieConnectionsResponse>> getMovieConnections(@PathVariable Long movieId) {
         Movie movie = movieService.getMovieById(movieId);
-        List<ConnectionResponse> connections = connectionService.getConnectionsForCurrentUserByMovie(movieId).stream()
+        List<ConnectionResponse> connections = connectionService.getConnectionsForCurrentUserByMovieComponent(movieId).stream()
                 .map(ConnectionResponse::from)
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(
                 new MovieConnectionsResponse(MovieResponse.from(movie), connections),
-                "Movie connections retrieved"
+                "Movie graph retrieved"
         ));
     }
 }

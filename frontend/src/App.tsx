@@ -1,9 +1,10 @@
-import { startTransition, useDeferredValue, useEffect, useState, type FormEvent } from "react";
+import { startTransition, useDeferredValue, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ConnectionGraph } from "./components/ConnectionGraph";
 import { ApiError, api } from "./lib/api";
 import type { Connection, Movie, SessionResponse, UserProfile } from "./lib/types";
 
 type AuthMode = "login" | "register" | "forgot";
+type AppPath = "/" | "/explore" | "/connections" | "/verify" | "/reset-password";
 
 type ConnectionForm = {
   fromMovieId: string;
@@ -37,7 +38,7 @@ export default function App() {
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [status, setStatus] = useState("Booting session...");
   const [loading, setLoading] = useState(true);
-  const [pathname, setPathname] = useState(window.location.pathname);
+  const [pathname, setPathname] = useState<AppPath>(readPathname());
 
   useEffect(() => {
     void api.getSession()
@@ -52,10 +53,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const onPopState = () => setPathname(window.location.pathname);
+    const onPopState = () => setPathname(readPathname());
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+
+  useEffect(() => {
+    if (loading || !session?.authenticated || !session.user) {
+      return;
+    }
+    if (pathname === "/" || pathname === "/verify" || pathname === "/reset-password") {
+      navigateTo("/explore", setPathname);
+    }
+  }, [loading, pathname, session]);
 
   if (loading) {
     return <div className="screen shell-center">{status}</div>;
@@ -70,18 +80,48 @@ export default function App() {
   }
 
   if (!session?.authenticated || !session.user) {
-    return <AuthPage onSession={setSession} status={status} setStatus={setStatus} />;
+    return (
+      <AuthPage
+        onSession={setSession}
+        onOpenWorkspace={() => navigateTo("/explore", setPathname)}
+        status={status}
+        setStatus={setStatus}
+      />
+    );
   }
 
-  return <Dashboard session={session} onSessionChange={setSession} status={status} setStatus={setStatus} />;
+  const currentPath = pathname === "/connections" ? "/connections" : "/explore";
+
+  return (
+    <AppLayout
+      session={session}
+      currentPath={currentPath}
+      onNavigate={(nextPath) => navigateTo(nextPath, setPathname)}
+      onLogout={async () => {
+        await api.logout();
+        setStatus("");
+        setSession({ authenticated: false, user: null });
+        navigateTo("/", setPathname);
+      }}
+      status={status}
+    >
+      {currentPath === "/connections" ? (
+        <ConnectionsPage setStatus={setStatus} />
+      ) : (
+        <ExplorePage setStatus={setStatus} />
+      )}
+    </AppLayout>
+  );
 }
 
 function AuthPage({
   onSession,
+  onOpenWorkspace,
   status,
   setStatus,
 }: {
   onSession: (session: SessionResponse) => void;
+  onOpenWorkspace: () => void;
   status: string;
   setStatus: (status: string) => void;
 }) {
@@ -98,6 +138,7 @@ function AuthPage({
       if (mode === "register") {
         const data = await api.register(form);
         onSession(data);
+        onOpenWorkspace();
         setStatus("Session opened");
         return;
       }
@@ -108,6 +149,7 @@ function AuthPage({
       }
       const data = await api.login({ email: form.email, password: form.password });
       onSession(data);
+      onOpenWorkspace();
       setStatus("Session opened");
     } catch (error) {
       if (error instanceof ApiError && error.data && typeof error.data === "object" && mode === "register") {
@@ -190,9 +232,7 @@ function AuthPage({
           <button className="primary" type="submit">
             {mode === "register" ? "Create account" : mode === "forgot" ? "Send reset link" : "Enter workspace"}
           </button>
-          {formError && (
-            <p className="auth-error" role="alert">{formError}</p>
-          )}
+          {formError && <p className="auth-error" role="alert">{formError}</p>}
         </form>
         {status && <p className="status">{status}</p>}
       </section>
@@ -200,34 +240,60 @@ function AuthPage({
   );
 }
 
-function Dashboard({
+function AppLayout({
   session,
-  onSessionChange,
+  currentPath,
+  onNavigate,
+  onLogout,
   status,
-  setStatus,
+  children,
 }: {
   session: SessionResponse;
-  onSessionChange: (session: SessionResponse) => void;
+  currentPath: "/explore" | "/connections";
+  onNavigate: (path: "/explore" | "/connections") => void;
+  onLogout: () => Promise<void>;
   status: string;
-  setStatus: (status: string) => void;
+  children: ReactNode;
 }) {
+  return (
+    <div className="screen dashboard">
+      <header className="masthead">
+        <div>
+          <p className="eyebrow">Session User</p>
+          <h1>{session.user?.username}</h1>
+        </div>
+        <div className="shell-actions">
+          <nav className="pill-row" aria-label="Workspace">
+            <button
+              className={currentPath === "/explore" ? "pill active" : "pill"}
+              onClick={() => onNavigate("/explore")}
+            >
+              Explore
+            </button>
+            <button
+              className={currentPath === "/connections" ? "pill active" : "pill"}
+              onClick={() => onNavigate("/connections")}
+            >
+              Connections
+            </button>
+          </nav>
+          <button className="ghost" onClick={() => void onLogout()}>Logout</button>
+        </div>
+      </header>
+
+      {children}
+
+      {status && <footer className="status-bar">{status}</footer>}
+    </div>
+  );
+}
+
+function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [searchResults, setSearchResults] = useState<Movie[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [movieConnections, setMovieConnections] = useState<Connection[]>([]);
-  const [allConnections, setAllConnections] = useState<Connection[]>([]);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [profileDraft, setProfileDraft] = useState({ username: session.user?.username ?? "", password: "" });
-  const [connectionForm, setConnectionForm] = useState<ConnectionForm>(emptyConnectionForm);
-  const [fromMoviePicker, setFromMoviePicker] = useState<MoviePickerState>(emptyMoviePickerState);
-  const [toMoviePicker, setToMoviePicker] = useState<MoviePickerState>(emptyMoviePickerState);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const isSelfConnection = Boolean(
-    connectionForm.fromMovieId &&
-    connectionForm.toMovieId &&
-    connectionForm.fromMovieId === connectionForm.toMovieId,
-  );
 
   useEffect(() => {
     if (!deferredQuery.trim()) {
@@ -242,31 +308,83 @@ function Dashboard({
     return () => window.clearTimeout(timeout);
   }, [deferredQuery, setStatus]);
 
-  useEffect(() => {
-    void refreshSidePanels();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function refreshSidePanels() {
+  async function pickMovie(movie: Movie) {
+    setSelectedMovie(movie);
     try {
-      const [connections, userProfile] = await Promise.all([api.getConnections(), api.getProfile()]);
-      setAllConnections(connections);
-      setProfile(userProfile);
-      setProfileDraft((current) => ({ ...current, username: userProfile.username }));
+      const data = await api.getMovieConnections(movie.id);
+      setMovieConnections(data.connections);
+      setStatus(`Loaded your connections for ${movie.title}`);
     } catch (error) {
       setStatus((error as Error).message);
     }
   }
 
-  async function pickMovie(movie: Movie) {
-    setSelectedMovie(movie);
-    if (!fromMoviePicker.selected) {
-      chooseMovie("from", movie);
-    }
+  return (
+    <main className="page-stack">
+      <section className="panel page-panel">
+        <div className="panel-header">
+          <h2>Explore Movie Graphs</h2>
+          <p>Search the catalog, pick one movie, and inspect the full connected component of your saved graph.</p>
+        </div>
+        <input
+          className="search-input"
+          placeholder="Search local catalog, even with rough spelling"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        {deferredQuery.trim().length > 1 && searchResults.length === 0 && (
+          <p className="empty-state">No close matches yet. Try another title, director, or rough spelling.</p>
+        )}
+        <div className="movie-grid">
+          {searchResults.map((movie) => (
+            <button key={movie.id} className="movie-card" onClick={() => void pickMovie(movie)}>
+              <strong>{movie.title}</strong>
+              <span>{movie.releaseYear}</span>
+              <span>{movie.director}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel page-panel graph-panel">
+        <div className="panel-header">
+          <h2>Selected Movie Graph</h2>
+          <p>{selectedMovie ? selectedMovie.title : "Pick a movie to render your graph."}</p>
+        </div>
+        <ConnectionGraph movie={selectedMovie} connections={movieConnections} />
+      </section>
+    </main>
+  );
+}
+
+function ConnectionsPage({ setStatus }: { setStatus: (status: string) => void }) {
+  const [allConnections, setAllConnections] = useState<Connection[]>([]);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileDraft, setProfileDraft] = useState({ username: "", password: "" });
+  const [connectionForm, setConnectionForm] = useState<ConnectionForm>(emptyConnectionForm);
+  const [fromMoviePicker, setFromMoviePicker] = useState<MoviePickerState>(emptyMoviePickerState);
+  const [toMoviePicker, setToMoviePicker] = useState<MoviePickerState>(emptyMoviePickerState);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const isSelfConnection = Boolean(
+    connectionForm.fromMovieId &&
+    connectionForm.toMovieId &&
+    connectionForm.fromMovieId === connectionForm.toMovieId,
+  );
+
+  useEffect(() => {
+    void refreshPanels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function refreshPanels() {
     try {
-      const data = await api.getMovieConnections(movie.id);
-      setMovieConnections(data.connections);
-      setStatus(`Loaded your connections for ${movie.title}`);
+      const [connections, userProfile] = await Promise.all([api.getConnections(), api.getProfile()]);
+      setAllConnections(connections);
+      setProfile(userProfile);
+      setProfileDraft((current) => ({
+        ...current,
+        username: userProfile.username,
+      }));
     } catch (error) {
       setStatus((error as Error).message);
     }
@@ -296,14 +414,8 @@ function Dashboard({
         });
         setStatus("Connection created");
       }
-      setEditingId(null);
-      setConnectionForm(emptyConnectionForm);
-      setFromMoviePicker(emptyMoviePickerState);
-      setToMoviePicker(emptyMoviePickerState);
-      await refreshSidePanels();
-      if (selectedMovie) {
-        await pickMovie(selectedMovie);
-      }
+      resetEditor();
+      await refreshPanels();
     } catch (error) {
       setStatus((error as Error).message);
     }
@@ -313,10 +425,10 @@ function Dashboard({
     try {
       await api.deleteConnection(id);
       setStatus("Connection deleted");
-      await refreshSidePanels();
-      if (selectedMovie) {
-        await pickMovie(selectedMovie);
+      if (editingId === id) {
+        resetEditor();
       }
+      await refreshPanels();
     } catch (error) {
       setStatus((error as Error).message);
     }
@@ -330,16 +442,11 @@ function Dashboard({
         password: profileDraft.password || undefined,
       });
       setProfileDraft((current) => ({ ...current, password: "" }));
-      await refreshSidePanels();
+      await refreshPanels();
       setStatus("Profile updated");
     } catch (error) {
       setStatus((error as Error).message);
     }
-  }
-
-  async function logout() {
-    await api.logout();
-    onSessionChange({ authenticated: false, user: null });
   }
 
   async function updateMoviePicker(side: "from" | "to", nextQuery: string) {
@@ -427,160 +534,120 @@ function Dashboard({
     });
   }
 
-  return (
-    <div className="screen dashboard">
-      <header className="masthead">
-        <div>
-          <p className="eyebrow">Session User</p>
-          <h1>{session.user?.username}</h1>
-        </div>
-        <button className="ghost" onClick={logout}>Logout</button>
-      </header>
+  function resetEditor() {
+    setEditingId(null);
+    setConnectionForm(emptyConnectionForm);
+    setFromMoviePicker(emptyMoviePickerState);
+    setToMoviePicker(emptyMoviePickerState);
+  }
 
-      <main className="layout">
-        <section className="panel">
-          <div className="panel-header">
-            <h2>Movie Search</h2>
-            <p>Search the local catalog with typo help, then inspect only your saved connections for one film.</p>
-          </div>
-          <input
-            className="search-input"
-            placeholder="Search local catalog, even with rough spelling"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
+  return (
+    <main className="layout">
+      <section className="panel">
+        <div className="panel-header">
+          <h2>Connection Editor</h2>
+          <p>Search each movie inline, then write the relationship once the pair feels right.</p>
+        </div>
+        <form className="stack" onSubmit={submitConnection}>
+          <MovieSearchField
+            label="From movie"
+            helper={fromMoviePicker.selected ? "Selected movie" : "Type at least two characters"}
+            value={fromMoviePicker.query}
+            results={fromMoviePicker.results.filter((movie) => movie.id !== Number(connectionForm.toMovieId || 0))}
+            selected={fromMoviePicker.selected}
+            onChange={(value) => void updateMoviePicker("from", value)}
+            onSelect={(movie) => chooseMovie("from", movie)}
+            onClear={() => clearMovie("from")}
           />
-          {deferredQuery.trim().length > 1 && searchResults.length === 0 && (
-            <p className="empty-state">No close matches yet. Try another title, director, or rough spelling.</p>
-          )}
-          <div className="movie-grid">
-            {searchResults.map((movie) => (
-              <button key={movie.id} className="movie-card" onClick={() => pickMovie(movie)}>
-                <strong>{movie.title}</strong>
-                <span>{movie.releaseYear}</span>
-                <span>{movie.director}</span>
-              </button>
+          <MovieSearchField
+            label="To movie"
+            helper={toMoviePicker.selected ? "Selected movie" : "Search by title or director"}
+            value={toMoviePicker.query}
+            results={toMoviePicker.results.filter((movie) => movie.id !== Number(connectionForm.fromMovieId || 0))}
+            selected={toMoviePicker.selected}
+            onChange={(value) => void updateMoviePicker("to", value)}
+            onSelect={(movie) => chooseMovie("to", movie)}
+            onClear={() => clearMovie("to")}
+          />
+          {isSelfConnection && <p className="picker-error">A movie cannot connect to itself.</p>}
+          <label>
+            <span>Reason</span>
+            <textarea
+              value={connectionForm.reason}
+              onChange={(event) => setConnectionForm({ ...connectionForm, reason: event.target.value })}
+              required
+            />
+          </label>
+          <label>
+            <span>Weight</span>
+            <input
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={connectionForm.weight}
+              onChange={(event) => setConnectionForm({ ...connectionForm, weight: event.target.value })}
+            />
+          </label>
+          <label>
+            <span>Category</span>
+            <input
+              value={connectionForm.category}
+              onChange={(event) => setConnectionForm({ ...connectionForm, category: event.target.value })}
+            />
+          </label>
+          <button className="primary" type="submit" disabled={isSelfConnection}>
+            {editingId ? "Update connection" : "Create connection"}
+          </button>
+        </form>
+      </section>
+
+      <section className="rail">
+        <div className="panel">
+          <div className="panel-header">
+            <h2>Your Connections</h2>
+            <p>{allConnections.length} total saved links</p>
+          </div>
+          <div className="list">
+            {allConnections.map((connection) => (
+              <article className="connection-card" key={connection.id}>
+                <strong>{connection.fromMovieTitle} {"->"} {connection.toMovieTitle}</strong>
+                <p>{connection.reason}</p>
+                <small>{connection.category ?? "uncategorized"} / weight {connection.weight}</small>
+                <div className="pill-row">
+                  <button className="pill" onClick={() => startEditing(connection)}>Edit</button>
+                  <button className="pill" onClick={() => void removeConnection(connection.id)}>Delete</button>
+                </div>
+              </article>
             ))}
           </div>
+        </div>
+
+        <div className="panel">
           <div className="panel-header">
-            <h2>Selected Movie Graph</h2>
-            <p>{selectedMovie ? selectedMovie.title : "Pick a movie to render your graph."}</p>
+            <h2>Profile</h2>
+            <p>{profile?.email}</p>
           </div>
-          <ConnectionGraph movie={selectedMovie} connections={movieConnections} />
-        </section>
-
-        <section className="rail">
-          <div className="panel">
-            <div className="panel-header">
-              <h2>Connection Editor</h2>
-              <p>Search each movie inline, then write the relationship once the pair feels right.</p>
-            </div>
-            <form className="stack" onSubmit={submitConnection}>
-              <MovieSearchField
-                label="From movie"
-                helper={fromMoviePicker.selected ? "Selected movie" : "Type at least two characters"}
-                value={fromMoviePicker.query}
-                results={fromMoviePicker.results.filter((movie) => movie.id !== Number(connectionForm.toMovieId || 0))}
-                selected={fromMoviePicker.selected}
-                onChange={(value) => void updateMoviePicker("from", value)}
-                onSelect={(movie) => chooseMovie("from", movie)}
-                onClear={() => clearMovie("from")}
+          <form className="stack" onSubmit={updateProfile}>
+            <label>
+              <span>Username</span>
+              <input
+                value={profileDraft.username}
+                onChange={(event) => setProfileDraft({ ...profileDraft, username: event.target.value })}
               />
-              <MovieSearchField
-                label="To movie"
-                helper={toMoviePicker.selected ? "Selected movie" : "Search by title or director"}
-                value={toMoviePicker.query}
-                results={toMoviePicker.results.filter((movie) => movie.id !== Number(connectionForm.fromMovieId || 0))}
-                selected={toMoviePicker.selected}
-                onChange={(value) => void updateMoviePicker("to", value)}
-                onSelect={(movie) => chooseMovie("to", movie)}
-                onClear={() => clearMovie("to")}
+            </label>
+            <label>
+              <span>New password</span>
+              <input
+                type="password"
+                value={profileDraft.password}
+                onChange={(event) => setProfileDraft({ ...profileDraft, password: event.target.value })}
               />
-              {isSelfConnection && <p className="picker-error">A movie cannot connect to itself.</p>}
-              <label>
-                <span>Reason</span>
-                <textarea
-                  value={connectionForm.reason}
-                  onChange={(event) => setConnectionForm({ ...connectionForm, reason: event.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                <span>Weight</span>
-                <input
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  value={connectionForm.weight}
-                  onChange={(event) => setConnectionForm({ ...connectionForm, weight: event.target.value })}
-                />
-              </label>
-              <label>
-                <span>Category</span>
-                <input
-                  value={connectionForm.category}
-                  onChange={(event) => setConnectionForm({ ...connectionForm, category: event.target.value })}
-                />
-              </label>
-              <button className="primary" type="submit" disabled={isSelfConnection}>
-                {editingId ? "Update connection" : "Create connection"}
-              </button>
-            </form>
-          </div>
-
-          <div className="panel">
-            <div className="panel-header">
-              <h2>Your Connections</h2>
-              <p>{allConnections.length} total saved links</p>
-            </div>
-            <div className="list">
-              {allConnections.map((connection) => (
-                <article className="connection-card" key={connection.id}>
-                  <strong>{connection.fromMovieTitle} {"->"} {connection.toMovieTitle}</strong>
-                  <p>{connection.reason}</p>
-                  <small>{connection.category ?? "uncategorized"} / weight {connection.weight}</small>
-                  <div className="pill-row">
-                    <button
-                      className="pill"
-                      onClick={() => startEditing(connection)}
-                    >
-                      Edit
-                    </button>
-                    <button className="pill" onClick={() => removeConnection(connection.id)}>Delete</button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-header">
-              <h2>Profile</h2>
-              <p>{profile?.email}</p>
-            </div>
-            <form className="stack" onSubmit={updateProfile}>
-              <label>
-                <span>Username</span>
-                <input
-                  value={profileDraft.username}
-                  onChange={(event) => setProfileDraft({ ...profileDraft, username: event.target.value })}
-                />
-              </label>
-              <label>
-                <span>New password</span>
-                <input
-                  type="password"
-                  value={profileDraft.password}
-                  onChange={(event) => setProfileDraft({ ...profileDraft, password: event.target.value })}
-                />
-              </label>
-              <button className="primary" type="submit">Save profile</button>
-            </form>
-          </div>
-        </section>
-      </main>
-
-      {status && <footer className="status-bar">{status}</footer>}
-    </div>
+            </label>
+            <button className="primary" type="submit">Save profile</button>
+          </form>
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -690,4 +757,19 @@ function ResetPasswordPage() {
       </section>
     </div>
   );
+}
+
+function readPathname(): AppPath {
+  const pathname = window.location.pathname;
+  if (pathname === "/explore" || pathname === "/connections" || pathname === "/verify" || pathname === "/reset-password") {
+    return pathname;
+  }
+  return "/";
+}
+
+function navigateTo(path: AppPath, setPathname: (path: AppPath) => void) {
+  if (window.location.pathname !== path) {
+    window.history.pushState({}, "", path);
+  }
+  setPathname(path);
 }

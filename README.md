@@ -10,11 +10,21 @@ The app uses server-side session authentication with cookies. The frontend never
 ## Product Flow
 
 - Authenticate with register, login, logout, forgot password, reset password, and session bootstrap endpoints.
-- Search one movie from the local catalog.
-- View only the current user's saved connections for the selected movie.
-- Create, edit, and delete two-movie connections in a separate editor.
-- Inspect connections as an interactive graph.
+- Use separate authenticated workspaces:
+  - `Explore` for movie search and graph viewing
+  - `Connections` for creating, editing, and deleting saved links
+- Search one movie from the local catalog in `Explore`.
+- View the current user's full reachable saved graph component for the selected movie.
+- Inspect connections as an interactive graph with deterministic auto-layout and an explicit zoom slider.
+- Create, edit, and delete two-movie connections in the separate `Connections` workspace.
 - Update profile settings from the authenticated session.
+
+## Frontend Workspace Notes
+
+- Logging in or registering routes the user into `Explore`.
+- The graph page and connection editor are intentionally split so the graph canvas can occupy most of the screen.
+- Graph zoom uses the on-screen control bar rather than mouse-wheel zoom.
+- Logging out clears authenticated status text before returning to the auth screen.
 
 ## Security Notes
 
