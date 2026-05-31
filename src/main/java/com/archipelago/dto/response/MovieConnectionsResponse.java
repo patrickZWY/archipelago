@@ -2,5 +2,9 @@ package com.archipelago.dto.response;
 
 import java.util.List;
 
-public record MovieConnectionsResponse(MovieResponse movie, List<ConnectionResponse> connections) {
+public record MovieConnectionsResponse(
+        MovieResponse movie,
+        List<MovieResponse> movies,
+        List<ConnectionResponse> connections
+) {
 }

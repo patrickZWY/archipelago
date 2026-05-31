@@ -6,12 +6,23 @@ import type { Connection, Movie } from "../lib/types";
 type Props = {
   movie: Movie | null;
   connections: Connection[];
+  selectedMovieId?: number | null;
+  selectedConnectionId?: number | null;
+  onMovieSelect?: (movieId: number) => void;
+  onConnectionSelect?: (connectionId: number) => void;
 };
 
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 2.2;
 
-export function ConnectionGraph({ movie, connections }: Props) {
+export function ConnectionGraph({
+  movie,
+  connections,
+  selectedMovieId,
+  selectedConnectionId,
+  onMovieSelect,
+  onConnectionSelect,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<cytoscape.Core | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -52,9 +63,17 @@ export function ConnectionGraph({ movie, connections }: Props) {
           },
         },
         {
+          selector: "node:selected, node[active = 1]",
+          style: {
+            "background-color": "#7ce0ff",
+            "border-width": 2,
+            "border-color": "#d4ff4f",
+          },
+        },
+        {
           selector: "edge",
           style: {
-            width: 2,
+            width: "mapData(weight, 0.1, 3, 2, 6)",
             "line-color": "#7ce0ff",
             "target-arrow-color": "#7ce0ff",
             "target-arrow-shape": "triangle",
@@ -72,9 +91,35 @@ export function ConnectionGraph({ movie, connections }: Props) {
             "text-border-color": "#7ce0ff",
           },
         },
+        {
+          selector: "edge[active = 1]",
+          style: {
+            "line-color": "#ff8f00",
+            "target-arrow-color": "#ff8f00",
+            "text-border-color": "#ff8f00",
+            width: 6,
+          },
+        },
       ],
     });
     graphRef.current = graph;
+
+    if (typeof graph.on === "function") {
+      graph.on("tap", "node", (event) => {
+        const nodeId = String(event.target.id?.() ?? event.target.data("id"));
+        const movieId = Number(nodeId.replace("movie-", ""));
+        if (Number.isFinite(movieId)) {
+          onMovieSelect?.(movieId);
+        }
+      });
+      graph.on("tap", "edge", (event) => {
+        const edgeId = String(event.target.id?.() ?? event.target.data("id"));
+        const connectionId = Number(edgeId.replace("connection-", ""));
+        if (Number.isFinite(connectionId)) {
+          onConnectionSelect?.(connectionId);
+        }
+      });
+    }
 
     const selectedNodeId = movie ? `movie-${movie.id}` : undefined;
     const nodeCount = graph.nodes().length;
@@ -95,7 +140,28 @@ export function ConnectionGraph({ movie, connections }: Props) {
       graphRef.current = null;
       graph.destroy();
     };
-  }, [movie, connections]);
+  }, [movie, connections, onConnectionSelect, onMovieSelect]);
+
+  useEffect(() => {
+    const graph = graphRef.current;
+    if (!graph) {
+      return;
+    }
+
+    graph.nodes().forEach((node) => {
+      node.data("active", 0);
+    });
+    graph.edges().forEach((edge) => {
+      edge.data("active", 0);
+    });
+
+    if (selectedMovieId) {
+      graph.$id(`movie-${selectedMovieId}`).data("active", 1);
+    }
+    if (selectedConnectionId) {
+      graph.$id(`connection-${selectedConnectionId}`).data("active", 1);
+    }
+  }, [selectedConnectionId, selectedMovieId]);
 
   function handleZoomChange(nextZoom: number) {
     setZoom(nextZoom);

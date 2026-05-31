@@ -11,9 +11,19 @@ import java.util.Optional;
 public interface MovieMapper {
     Optional<Movie> findById(@Param("id") Long id);
 
+    Optional<Movie> findByExternalId(@Param("externalId") String externalId);
+
+    Optional<Movie> findByTitleAndReleaseYear(@Param("title") String title, @Param("releaseYear") int releaseYear);
+
     int countByTitle(@Param("title") String title);
 
     List<Movie> findAll();
 
+    List<Movie> findDistinctByUserId(@Param("userId") Long userId);
+
     List<Movie> searchMovies(@Param("title") String title, @Param("limit") int limit);
+
+    void insert(Movie movie);
+
+    void update(Movie movie);
 }

@@ -1,0 +1,17 @@
+ALTER TABLE movies ADD COLUMN IF NOT EXISTS tagline VARCHAR(255);
+ALTER TABLE movies ADD COLUMN IF NOT EXISTS synopsis VARCHAR(4000);
+ALTER TABLE movies ADD COLUMN IF NOT EXISTS genres VARCHAR(500);
+ALTER TABLE movies ADD COLUMN IF NOT EXISTS runtime_minutes INT;
+ALTER TABLE movies ADD COLUMN IF NOT EXISTS cast_members VARCHAR(1000);
+ALTER TABLE movies ADD COLUMN IF NOT EXISTS director_notes VARCHAR(1000);
+
+CREATE TABLE IF NOT EXISTS shared_graph_exports (
+    id BIGSERIAL PRIMARY KEY,
+    share_token VARCHAR(64) NOT NULL UNIQUE,
+    owner_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    root_movie_id BIGINT NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
+    title VARCHAR(255),
+    creation_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_shared_graph_exports_share_token ON shared_graph_exports (share_token);

@@ -80,6 +80,22 @@
         SELECT * FROM users WHERE password_reset_token = #{token} AND deleted = FALSE
     </select>
 
+    <select id="searchByUsername" resultMap="UserResultMap">
+        SELECT *
+        FROM users
+        WHERE deleted = FALSE
+          AND id != #{excludeUserId}
+          AND LOWER(username) LIKE CONCAT('%', LOWER(#{query}), '%')
+        ORDER BY
+            CASE
+                WHEN LOWER(username) = LOWER(#{query}) THEN 0
+                WHEN LOWER(username) LIKE CONCAT(LOWER(#{query}), '%') THEN 1
+                ELSE 2
+            END,
+            username ASC
+        LIMIT #{limit}
+    </select>
+
     <update id="update" parameterType="com.archipelago.model.User">
         UPDATE users
         SET password = #{password},

@@ -1,6 +1,7 @@
 package com.archipelago.service.impl;
 
 import com.archipelago.dto.request.UpdateProfileRequest;
+import com.archipelago.dto.response.PublicUserResponse;
 import com.archipelago.dto.response.UserProfileResponse;
 import com.archipelago.exception.EmailAlreadyExistsException;
 import com.archipelago.mapper.UserMapper;
@@ -11,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +26,17 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserProfileResponse getProfile() {
         return UserProfileResponse.from(currentUserProvider.getCurrentUser());
+    }
+
+    @Override
+    public List<PublicUserResponse> searchUsers(String query) {
+        User currentUser = currentUserProvider.getCurrentUser();
+        if (!StringUtils.hasText(query)) {
+            return List.of();
+        }
+        return userMapper.searchByUsername(query.trim(), currentUser.getId(), 15).stream()
+                .map(PublicUserResponse::from)
+                .toList();
     }
 
     @Override

@@ -36,4 +36,16 @@ public class Movie {
 //    @Column
     private String externalId;
 
+    private String tagline;
+
+    private String synopsis;
+
+    private String genres;
+
+    private Integer runtimeMinutes;
+
+    private String castMembers;
+
+    private String directorNotes;
+
 }

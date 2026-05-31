@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 public interface AuthService {
     User register(RegisterRequest request);
     User authenticate(LoginRequest request);
+    User authenticateDemoUser();
     void startSession(User user, HttpServletRequest request);
     void logout(HttpServletRequest request);
     User getSessionUser();

@@ -2,6 +2,21 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ConnectionGraph } from "../components/ConnectionGraph";
 
+const movie = {
+  id: 1,
+  title: "Inception",
+  releaseYear: 2010,
+  director: "Christopher Nolan",
+  pictureUrl: null,
+  externalId: null,
+  tagline: null,
+  synopsis: null,
+  genres: [],
+  runtimeMinutes: null,
+  castMembers: [],
+  directorNotes: null,
+};
+
 const cytoscapeTestState = vi.hoisted(() => {
   const zoomMock = vi.fn();
   const fitMock = vi.fn();
@@ -9,8 +24,12 @@ const cytoscapeTestState = vi.hoisted(() => {
   const destroyMock = vi.fn();
   const layoutRunMock = vi.fn();
   const layoutMock = vi.fn(() => ({ run: layoutRunMock }));
+  const makeCollectionEntry = () => ({ data: vi.fn() });
   const cytoscapeMock = vi.fn(() => ({
-    nodes: () => [{ id: "movie-1" }, { id: "movie-2" }, { id: "movie-3" }],
+    nodes: () => [makeCollectionEntry(), makeCollectionEntry(), makeCollectionEntry()],
+    edges: () => [],
+    on: vi.fn(),
+    $id: vi.fn(() => ({ data: vi.fn() })),
     layout: layoutMock,
     fit: fitMock,
     center: centerMock,
@@ -42,7 +61,7 @@ describe("ConnectionGraph", () => {
 
     render(
       <ConnectionGraph
-        movie={{ id: 1, title: "Inception", releaseYear: 2010, director: "Christopher Nolan", pictureUrl: null, externalId: null }}
+        movie={movie}
         connections={[
           {
             id: 1,
@@ -80,7 +99,7 @@ describe("ConnectionGraph", () => {
 
     render(
       <ConnectionGraph
-        movie={{ id: 1, title: "Inception", releaseYear: 2010, director: "Christopher Nolan", pictureUrl: null, externalId: null }}
+        movie={movie}
         connections={[
           {
             id: 1,

@@ -16,6 +16,12 @@
             <result property="director" column="from_director"/>
             <result property="pictureUrl" column="from_picture_url"/>
             <result property="externalId" column="from_external_id"/>
+            <result property="tagline" column="from_tagline"/>
+            <result property="synopsis" column="from_synopsis"/>
+            <result property="genres" column="from_genres"/>
+            <result property="runtimeMinutes" column="from_runtime_minutes"/>
+            <result property="castMembers" column="from_cast_members"/>
+            <result property="directorNotes" column="from_director_notes"/>
         </association>
         <association property="toMovie" javaType="com.archipelago.model.Movie">
             <id property="id" column="to_movie_id"/>
@@ -24,6 +30,12 @@
             <result property="director" column="to_director"/>
             <result property="pictureUrl" column="to_picture_url"/>
             <result property="externalId" column="to_external_id"/>
+            <result property="tagline" column="to_tagline"/>
+            <result property="synopsis" column="to_synopsis"/>
+            <result property="genres" column="to_genres"/>
+            <result property="runtimeMinutes" column="to_runtime_minutes"/>
+            <result property="castMembers" column="to_cast_members"/>
+            <result property="directorNotes" column="to_director_notes"/>
         </association>
     </resultMap>
 
@@ -39,12 +51,24 @@
             fm.director AS from_director,
             fm.picture_url AS from_picture_url,
             fm.external_id AS from_external_id,
+            fm.tagline AS from_tagline,
+            fm.synopsis AS from_synopsis,
+            fm.genres AS from_genres,
+            fm.runtime_minutes AS from_runtime_minutes,
+            fm.cast_members AS from_cast_members,
+            fm.director_notes AS from_director_notes,
             tm.id AS to_movie_id,
             tm.title AS to_movie_title,
             tm.release_year AS to_release_year,
             tm.director AS to_director,
             tm.picture_url AS to_picture_url,
-            tm.external_id AS to_external_id
+            tm.external_id AS to_external_id,
+            tm.tagline AS to_tagline,
+            tm.synopsis AS to_synopsis,
+            tm.genres AS to_genres,
+            tm.runtime_minutes AS to_runtime_minutes,
+            tm.cast_members AS to_cast_members,
+            tm.director_notes AS to_director_notes
         FROM connections c
         JOIN movies fm ON fm.id = c.from_movie_id
         JOIN movies tm ON tm.id = c.to_movie_id

@@ -1,9 +1,17 @@
 import type {
   ApiEnvelope,
+  CatalogImport,
   Connection,
+  FriendProfile,
+  FriendRequest,
+  FriendRequests,
   Movie,
   MovieConnections,
+  MoviePath,
+  PublicUser,
   SessionResponse,
+  SharedGraph,
+  SharedGraphExport,
   UserProfile,
 } from "./types";
 
@@ -74,6 +82,11 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify(payload),
     }),
+  loginDemo: () =>
+    request<SessionResponse>("/api/auth/demo", {
+      method: "POST",
+      headers: JSON_HEADERS,
+    }),
   login: (payload: { email: string; password: string }) =>
     request<SessionResponse>("/api/auth/login", {
       method: "POST",
@@ -97,15 +110,32 @@ export const api = {
     request<void>(`/api/auth/verify?token=${encodeURIComponent(token)}`),
   searchMovies: (query: string) =>
     request<Movie[]>(`/api/movies/search?q=${encodeURIComponent(query)}`),
+  importCuratedCatalog: (source = "curated-spring-2026") =>
+    request<CatalogImport>(`/api/movies/imports/curated?source=${encodeURIComponent(source)}`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+    }),
+  getMovie: (movieId: number) =>
+    request<Movie>(`/api/movies/${movieId}`),
   getMovieConnections: (movieId: number) =>
     request<MovieConnections>(`/api/movies/${movieId}/connections`),
+  getMoviePath: (fromMovieId: number, toMovieId: number) =>
+    request<MoviePath>(`/api/movies/path?from=${encodeURIComponent(fromMovieId)}&to=${encodeURIComponent(toMovieId)}`),
+  createShare: (payload: { movieId: number; title?: string }) =>
+    request<SharedGraphExport>("/api/shares", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(payload),
+    }),
+  getSharedGraph: (shareToken: string) =>
+    request<SharedGraph>(`/api/shares/${encodeURIComponent(shareToken)}`),
   getConnections: () => request<Connection[]>("/api/connections"),
   createConnection: (payload: {
     fromMovieId: number;
     toMovieId: number;
     reason: string;
     weight?: number;
-    category?: string;
+    category?: Connection["category"];
   }) =>
     request<Connection>("/api/connections", {
       method: "POST",
@@ -114,7 +144,7 @@ export const api = {
     }),
   updateConnection: (
     id: number,
-    payload: { reason: string; weight?: number; category?: string },
+    payload: { reason: string; weight?: number; category?: Connection["category"] },
   ) =>
     request<Connection>(`/api/connections/${id}`, {
       method: "PUT",
@@ -124,6 +154,34 @@ export const api = {
   deleteConnection: (id: number) =>
     request<void>(`/api/connections/${id}`, { method: "DELETE" }),
   getProfile: () => request<UserProfile>("/api/users/profile"),
+  searchUsers: (query: string) =>
+    request<PublicUser[]>(`/api/users/search?q=${encodeURIComponent(query)}`),
+  getFriends: () => request<PublicUser[]>("/api/friends"),
+  getFriendRequests: () => request<FriendRequests>("/api/friends/requests"),
+  sendFriendRequest: (recipientUserId: number) =>
+    request<FriendRequest>("/api/friends/requests", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ recipientUserId }),
+    }),
+  acceptFriendRequest: (requestId: number) =>
+    request<FriendRequest>(`/api/friends/requests/${requestId}/accept`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+    }),
+  declineFriendRequest: (requestId: number) =>
+    request<FriendRequest>(`/api/friends/requests/${requestId}/decline`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+    }),
+  removeFriend: (friendUserId: number) =>
+    request<void>(`/api/friends/${friendUserId}`, { method: "DELETE" }),
+  getFriendProfile: (friendUserId: number) =>
+    request<FriendProfile>(`/api/friends/${friendUserId}/profile`),
+  getFriendMovieConnections: (friendUserId: number, movieId: number) =>
+    request<MovieConnections>(`/api/friends/${friendUserId}/movies/${movieId}/connections`),
+  getFriendMoviePath: (friendUserId: number, fromMovieId: number, toMovieId: number) =>
+    request<MoviePath>(`/api/friends/${friendUserId}/movies/path?from=${encodeURIComponent(fromMovieId)}&to=${encodeURIComponent(toMovieId)}`),
   updateProfile: (payload: { username?: string; password?: string }) =>
     request<void>("/api/users/profile", {
       method: "PUT",

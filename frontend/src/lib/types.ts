@@ -1,6 +1,13 @@
+import type { ConnectionCategory } from "./connection-categories";
+
 export type UserSummary = {
   id: number;
   email: string;
+  username: string;
+};
+
+export type PublicUser = {
+  id: number;
   username: string;
 };
 
@@ -22,6 +29,12 @@ export type Movie = {
   director: string;
   pictureUrl: string | null;
   externalId: string | null;
+  tagline: string | null;
+  synopsis: string | null;
+  genres: string[];
+  runtimeMinutes: number | null;
+  castMembers: string[];
+  directorNotes: string | null;
 };
 
 export type Connection = {
@@ -32,12 +45,40 @@ export type Connection = {
   toMovieTitle: string;
   reason: string;
   weight: number;
-  category: string | null;
+  category: ConnectionCategory | null;
 };
 
 export type MovieConnections = {
   movie: Movie;
+  movies: Movie[];
   connections: Connection[];
+};
+
+export type MoviePath = {
+  fromMovie: Movie;
+  toMovie: Movie;
+  movies: Movie[];
+  connections: Connection[];
+};
+
+export type CatalogImport = {
+  source: string;
+  insertedCount: number;
+  updatedCount: number;
+  totalProcessed: number;
+};
+
+export type SharedGraphExport = {
+  shareToken: string;
+  shareUrl: string;
+  title: string;
+  graph: MovieConnections;
+};
+
+export type SharedGraph = {
+  shareToken: string;
+  title: string;
+  graph: MovieConnections;
 };
 
 export type UserProfile = {
@@ -46,4 +87,23 @@ export type UserProfile = {
   email: string;
   enabled: boolean;
   verified: boolean;
+};
+
+export type FriendRequest = {
+  id: number;
+  status: "PENDING" | "ACCEPTED" | "DECLINED";
+  requester: PublicUser;
+  recipient: PublicUser;
+  otherUser: PublicUser;
+};
+
+export type FriendRequests = {
+  incoming: FriendRequest[];
+  outgoing: FriendRequest[];
+};
+
+export type FriendProfile = {
+  id: number;
+  username: string;
+  movies: Movie[];
 };

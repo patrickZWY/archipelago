@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.archipelago.mapper.FriendshipMapper">
+    <resultMap id="FriendshipResultMap" type="com.archipelago.model.Friendship">
+        <id property="id" column="id"/>
+        <result property="status" column="status" javaType="com.archipelago.model.enums.FriendshipStatus"/>
+        <result property="creationTime" column="creation_time"/>
+        <result property="updateTime" column="update_time"/>
+        <association property="requester" javaType="com.archipelago.model.User">
+            <id property="id" column="requester_id"/>
+            <result property="email" column="requester_email"/>
+            <result property="username" column="requester_username"/>
+        </association>
+        <association property="recipient" javaType="com.archipelago.model.User">
+            <id property="id" column="recipient_id"/>
+            <result property="email" column="recipient_email"/>
+            <result property="username" column="recipient_username"/>
+        </association>
+    </resultMap>
+
+    <sql id="FriendshipSelect">
+        SELECT
+            f.id,
+            f.status,
+            f.creation_time,
+            f.update_time,
+            requester.id AS requester_id,
+            requester.email AS requester_email,
+            requester.username AS requester_username,
+            recipient.id AS recipient_id,
+            recipient.email AS recipient_email,
+            recipient.username AS recipient_username
+        FROM friendships f
+        JOIN users requester ON requester.id = f.requester_user_id
+        JOIN users recipient ON recipient.id = f.recipient_user_id
+    </sql>
+
+    <insert id="insert" parameterType="com.archipelago.model.Friendship" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO friendships (
+            requester_user_id,
+            recipient_user_id,
+            status,
+            creation_time,
+            update_time
+        ) VALUES (
+            #{requester.id},
+            #{recipient.id},
+            #{status},
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        )
+    </insert>
+
+    <update id="update" parameterType="com.archipelago.model.Friendship">
+        UPDATE friendships
+        SET requester_user_id = #{requester.id},
+            recipient_user_id = #{recipient.id},
+            status = #{status},
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultMap="FriendshipResultMap">
+        <include refid="FriendshipSelect"/>
+        WHERE f.id = #{id}
+    </select>
+
+    <select id="findByUserPair" resultMap="FriendshipResultMap">
+        <include refid="FriendshipSelect"/>
+        WHERE (f.requester_user_id = #{userIdA} AND f.recipient_user_id = #{userIdB})
+           OR (f.requester_user_id = #{userIdB} AND f.recipient_user_id = #{userIdA})
+    </select>
+
+    <select id="findAcceptedForUser" resultMap="FriendshipResultMap">
+        <include refid="FriendshipSelect"/>
+        WHERE f.status = 'ACCEPTED'
+          AND (f.requester_user_id = #{userId} OR f.recipient_user_id = #{userId})
+        ORDER BY f.update_time DESC, f.id DESC
+    </select>
+
+    <select id="findIncomingPendingForUser" resultMap="FriendshipResultMap">
+        <include refid="FriendshipSelect"/>
+        WHERE f.status = 'PENDING'
+          AND f.recipient_user_id = #{userId}
+        ORDER BY f.update_time DESC, f.id DESC
+    </select>
+
+    <select id="findOutgoingPendingForUser" resultMap="FriendshipResultMap">
+        <include refid="FriendshipSelect"/>
+        WHERE f.status = 'PENDING'
+          AND f.requester_user_id = #{userId}
+        ORDER BY f.update_time DESC, f.id DESC
+    </select>
+
+    <select id="countAcceptedBetweenUsers" resultType="int">
+        SELECT COUNT(*)
+        FROM friendships
+        WHERE status = 'ACCEPTED'
+          AND (
+                (requester_user_id = #{userIdA} AND recipient_user_id = #{userIdB})
+             OR (requester_user_id = #{userIdB} AND recipient_user_id = #{userIdA})
+          )
+    </select>
+
+    <delete id="deleteAcceptedByUserPair">
+        DELETE FROM friendships
+        WHERE status = 'ACCEPTED'
+          AND (
+                (requester_user_id = #{userIdA} AND recipient_user_id = #{userIdB})
+             OR (requester_user_id = #{userIdB} AND recipient_user_id = #{userIdA})
+          )
+    </delete>
+</mapper>

@@ -52,9 +52,20 @@ textarea {
   padding: 1.25rem;
 }
 
+.friend-shell {
+  background:
+    radial-gradient(circle at top left, rgba(255, 143, 0, 0.18), transparent 28%),
+    radial-gradient(circle at 80% 0%, rgba(212, 255, 79, 0.14), transparent 24%),
+    linear-gradient(180deg, #120f0b 0%, #081017 36%, #06131a 100%);
+}
+
 .masthead,
 .layout,
-.page-stack {
+.page-stack,
+.graph-inspector-grid,
+.graph-detail-stack,
+.graph-frame-stack,
+.graph-controls {
   display: grid;
   gap: 1rem;
 }
@@ -65,6 +76,22 @@ textarea {
   margin-bottom: 1rem;
 }
 
+.friend-masthead {
+  align-items: start;
+  padding: 1.4rem 1.5rem;
+  border: 1px solid rgba(255, 214, 153, 0.18);
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(46, 28, 10, 0.94), rgba(10, 24, 31, 0.9)),
+    rgba(8, 18, 24, 0.92);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+}
+
+.friend-eyebrow {
+  color: #ffd28b;
+  letter-spacing: 0.18em;
+}
+
 .layout {
   grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
 }
@@ -73,11 +100,21 @@ textarea {
   grid-template-columns: 1fr;
 }
 
+.graph-inspector-grid {
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.9fr);
+  align-items: start;
+}
+
 .rail,
 .stack,
-.list {
+.list,
+.dense-list {
   display: grid;
   gap: 1rem;
+}
+
+.dense-list {
+  gap: 0.55rem;
 }
 
 .panel {
@@ -86,6 +123,18 @@ textarea {
 
 .page-panel {
   padding: 1.1rem;
+}
+
+.friend-intro-panel {
+  border-color: rgba(255, 214, 153, 0.16);
+  background:
+    linear-gradient(180deg, rgba(28, 18, 8, 0.82), rgba(8, 20, 26, 0.78));
+}
+
+.inset-panel {
+  padding: 0.95rem;
+  border-radius: 20px;
+  background: rgba(6, 16, 19, 0.68);
 }
 
 .panel-header {
@@ -103,7 +152,10 @@ textarea {
 .panel-header p,
 .connection-card small,
 .movie-card span,
-.lede {
+.lede,
+.demo-banner span,
+.share-link,
+.detail-copy {
   color: #9fb8c0;
 }
 
@@ -134,6 +186,24 @@ textarea {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.demo-banner,
+.share-row {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(124, 224, 255, 0.16);
+  background: rgba(7, 19, 27, 0.92);
+}
+
+.share-row {
+  margin-bottom: 1rem;
+}
+
+.share-link {
+  overflow-wrap: anywhere;
 }
 
 .shell-actions {
@@ -212,6 +282,10 @@ textarea {
   justify-content: flex-end;
 }
 
+.graph-controls {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
 .graph-zoom-control {
   display: flex;
   align-items: center;
@@ -241,6 +315,47 @@ textarea {
   min-height: 62vh;
 }
 
+.friend-collection-panel {
+  border-color: rgba(255, 214, 153, 0.16);
+  background:
+    linear-gradient(180deg, rgba(24, 17, 10, 0.82), rgba(8, 18, 24, 0.86));
+}
+
+.friend-viewer-panel {
+  border-color: rgba(255, 214, 153, 0.16);
+  background:
+    linear-gradient(180deg, rgba(10, 21, 28, 0.92), rgba(7, 15, 21, 0.94));
+}
+
+.friend-shell .movie-card,
+.friend-shell .connection-card,
+.friend-shell .picker-result,
+.friend-shell .picker-selection,
+.friend-shell .graph-zoom-control,
+.friend-shell .path-card,
+.friend-shell .demo-banner,
+.friend-shell .share-row {
+  border-color: rgba(255, 214, 153, 0.16);
+  background: rgba(18, 22, 20, 0.82);
+}
+
+.friend-shell .pill,
+.friend-shell .ghost {
+  border-color: rgba(255, 214, 153, 0.18);
+  background: rgba(36, 24, 12, 0.78);
+}
+
+.friend-shell .pill.active {
+  background: #ffd28b;
+  color: #0c1113;
+}
+
+.friend-shell .graph-canvas {
+  background:
+    radial-gradient(circle at top, rgba(255, 143, 0, 0.08), transparent 30%),
+    linear-gradient(180deg, rgba(14, 17, 16, 0.88), rgba(8, 18, 24, 0.94));
+}
+
 label {
   display: grid;
   gap: 0.35rem;
@@ -268,9 +383,24 @@ textarea {
 
 .empty-state,
 .picker-empty,
-.picker-helper {
+.picker-helper,
+.detail-stat {
   margin: 0;
   color: #9fb8c0;
+}
+
+.detail-copy {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.path-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border-radius: 18px;
+  border: 1px solid rgba(124, 224, 255, 0.2);
+  background: rgba(9, 30, 39, 0.68);
 }
 
 .picker-error {
@@ -338,6 +468,10 @@ textarea {
 
 @media (max-width: 960px) {
   .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-inspector-grid {
     grid-template-columns: 1fr;
   }
 

@@ -32,6 +32,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
+    private static final String DEMO_EMAIL = "demo@archipelago.local";
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
@@ -107,6 +108,12 @@ public class AuthServiceImpl implements AuthService {
         user.setLockoutTime(null);
         userMapper.update(user);
         return user;
+    }
+
+    @Override
+    public User authenticateDemoUser() {
+        return userMapper.findActiveByEmail(DEMO_EMAIL)
+                .orElseThrow(() -> new UserNotFoundException("Demo account is unavailable"));
     }
 
     @Override

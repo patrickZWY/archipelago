@@ -2,6 +2,7 @@ package com.archipelago.service.impl;
 
 import com.archipelago.dto.request.CreateConnectionRequest;
 import com.archipelago.dto.request.UpdateConnectionRequest;
+import com.archipelago.dto.response.MoviePathResponse;
 import com.archipelago.exception.IllegalStateException;
 import com.archipelago.exception.ResourceNotFoundException;
 import com.archipelago.mapper.ConnectionMapper;
@@ -9,17 +10,14 @@ import com.archipelago.mapper.MovieMapper;
 import com.archipelago.model.Connection;
 import com.archipelago.model.Movie;
 import com.archipelago.model.User;
+import com.archipelago.model.enums.ConnectionCategory;
 import com.archipelago.security.CurrentUserProvider;
 import com.archipelago.service.ConnectionService;
+import com.archipelago.service.GraphAccessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Queue;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +26,7 @@ public class ConnectionServiceImpl implements ConnectionService {
     private final ConnectionMapper connectionMapper;
     private final MovieMapper movieMapper;
     private final CurrentUserProvider currentUserProvider;
+    private final GraphAccessService graphAccessService;
 
     @Override
     public List<Connection> getConnectionsForCurrentUser() {
@@ -38,43 +37,16 @@ public class ConnectionServiceImpl implements ConnectionService {
     public List<Connection> getConnectionsForCurrentUserByMovieComponent(Long movieId) {
         User user = currentUserProvider.getCurrentUser();
         movieMapper.findById(movieId).orElseThrow(() -> new ResourceNotFoundException("Movie not found"));
-        List<Connection> allConnections = connectionMapper.findByUserId(user.getId());
-        if (allConnections.isEmpty()) {
-            return List.of();
-        }
+        return connectionMapper.findByUserId(user.getId()).stream()
+                .filter(connection -> graphAccessService.getMovieGraph(user.getId(), movieId).connections().stream()
+                        .anyMatch(response -> response.id().equals(connection.getId())))
+                .toList();
+    }
 
-        Set<Long> connectedMovieIds = new HashSet<>();
-        Queue<Long> pendingMovieIds = new ArrayDeque<>();
-        connectedMovieIds.add(movieId);
-        pendingMovieIds.add(movieId);
-
-        while (!pendingMovieIds.isEmpty()) {
-            Long currentMovieId = pendingMovieIds.remove();
-            for (Connection connection : allConnections) {
-                Long fromMovieId = connection.getFromMovie().getId();
-                Long toMovieId = connection.getToMovie().getId();
-                if (!fromMovieId.equals(currentMovieId) && !toMovieId.equals(currentMovieId)) {
-                    continue;
-                }
-
-                if (connectedMovieIds.add(fromMovieId)) {
-                    pendingMovieIds.add(fromMovieId);
-                }
-                if (connectedMovieIds.add(toMovieId)) {
-                    pendingMovieIds.add(toMovieId);
-                }
-            }
-        }
-
-        List<Connection> componentConnections = new ArrayList<>();
-        for (Connection connection : allConnections) {
-            Long fromMovieId = connection.getFromMovie().getId();
-            Long toMovieId = connection.getToMovie().getId();
-            if (connectedMovieIds.contains(fromMovieId) && connectedMovieIds.contains(toMovieId)) {
-                componentConnections.add(connection);
-            }
-        }
-        return componentConnections;
+    @Override
+    public MoviePathResponse getShortestPathForCurrentUser(Long fromMovieId, Long toMovieId) {
+        User user = currentUserProvider.getCurrentUser();
+        return graphAccessService.getShortestPath(user.getId(), fromMovieId, toMovieId, "These movies are not connected in your graph");
     }
 
     @Override
@@ -93,7 +65,7 @@ public class ConnectionServiceImpl implements ConnectionService {
                 .toMovie(toMovie)
                 .reason(request.reason().trim())
                 .weight(request.weight() == null ? 1.0 : request.weight())
-                .category(request.category() == null ? null : request.category().trim())
+                .category(normalizeCategory(request.category()))
                 .user(user)
                 .build();
         connectionMapper.insert(connection);
@@ -109,7 +81,7 @@ public class ConnectionServiceImpl implements ConnectionService {
         connection.setUser(user);
         connection.setReason(request.reason().trim());
         connection.setWeight(request.weight() == null ? connection.getWeight() : request.weight());
-        connection.setCategory(request.category() == null ? null : request.category().trim());
+        connection.setCategory(normalizeCategory(request.category()));
         connectionMapper.update(connection);
         return connectionMapper.findByIdAndUserId(connectionId, user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Connection not found"));
@@ -121,5 +93,15 @@ public class ConnectionServiceImpl implements ConnectionService {
         connectionMapper.findByIdAndUserId(connectionId, user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Connection not found"));
         connectionMapper.deleteByIdAndUserId(connectionId, user.getId());
+    }
+
+    private String normalizeCategory(String category) {
+        if (category == null || category.isBlank()) {
+            return null;
+        }
+
+        return ConnectionCategory.fromValue(category)
+                .map(ConnectionCategory::value)
+                .orElseThrow(() -> new IllegalStateException("Category must be one of the supported graph categories"));
     }
 }

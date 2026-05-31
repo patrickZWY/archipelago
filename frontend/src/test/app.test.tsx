@@ -36,6 +36,42 @@ describe("App", () => {
     expect(await screen.findByText("Map how films connect.")).toBeInTheDocument();
   });
 
+  it("opens the seeded demo session from the auth screen", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { authenticated: false, user: null },
+            message: "ok",
+          }),
+        };
+      }
+      if (url.endsWith("/api/auth/demo") && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { authenticated: true, user: { id: 99, email: "demo@archipelago.local", username: "demo" } },
+            message: "Demo session opened",
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await screen.findByText("Map how films connect.");
+    await userEvent.click(screen.getByRole("button", { name: "Enter demo" }));
+
+    expect(await screen.findByText("Explore Movie Graphs")).toBeInTheDocument();
+    expect(screen.getByText("demo")).toBeInTheDocument();
+  });
+
   it("shows login errors inline when credentials are invalid", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -272,6 +308,172 @@ describe("App", () => {
     );
   });
 
+  it("renders the network workspace and sends a friend request", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { authenticated: true, user: { id: 1, email: "a@example.com", username: "atlas" } },
+            message: "ok",
+          }),
+        };
+      }
+      if (url.endsWith("/api/friends")) {
+        return { ok: true, json: async () => ({ success: true, data: [], message: "ok" }) };
+      }
+      if (url.endsWith("/api/friends/requests") && !init?.method) {
+        return { ok: true, json: async () => ({ success: true, data: { incoming: [], outgoing: [] }, message: "ok" }) };
+      }
+      if (url.endsWith("/api/users/search?q=arch")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: [{ id: 7, username: "arch-friend" }],
+            message: "ok",
+          }),
+        };
+      }
+      if (url.endsWith("/api/friends/requests") && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              id: 1,
+              status: "PENDING",
+              requester: { id: 1, username: "atlas" },
+              recipient: { id: 7, username: "arch-friend" },
+              otherUser: { id: 7, username: "arch-friend" },
+            },
+            message: "ok",
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Network" }));
+    await userEvent.type(screen.getByPlaceholderText("Find a username"), "arch");
+    expect(await screen.findByText("arch-friend")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add friend" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/friends/requests",
+        expect.objectContaining({ method: "POST", credentials: "include" }),
+      ),
+    );
+  });
+
+  it("opens a dedicated friend graph page from the network workspace", async () => {
+    const friendMovie = {
+      id: 2,
+      title: "Interstellar",
+      releaseYear: 2014,
+      director: "Christopher Nolan",
+      pictureUrl: null,
+      externalId: null,
+      tagline: null,
+      synopsis: null,
+      genres: [],
+      runtimeMinutes: null,
+      castMembers: [],
+      directorNotes: null,
+    };
+    const otherFriendMovie = {
+      id: 5,
+      title: "Arrival",
+      releaseYear: 2016,
+      director: "Denis Villeneuve",
+      pictureUrl: null,
+      externalId: null,
+      tagline: null,
+      synopsis: null,
+      genres: [],
+      runtimeMinutes: null,
+      castMembers: [],
+      directorNotes: null,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { authenticated: true, user: { id: 1, email: "a@example.com", username: "atlas" } },
+            message: "ok",
+          }),
+        };
+      }
+      if (url.endsWith("/api/friends")) {
+        return {
+          ok: true,
+          json: async () => ({ success: true, data: [{ id: 7, username: "arch-friend" }], message: "ok" }),
+        };
+      }
+      if (url.endsWith("/api/friends/requests") && !init?.method) {
+        return { ok: true, json: async () => ({ success: true, data: { incoming: [], outgoing: [] }, message: "ok" }) };
+      }
+      if (url.endsWith("/api/friends/7/profile")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { id: 7, username: "arch-friend", movies: [friendMovie, otherFriendMovie] },
+            message: "ok",
+          }),
+        };
+      }
+      if (url.endsWith("/api/friends/7/movies/2/connections")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { movie: friendMovie, movies: [friendMovie], connections: [] },
+            message: "ok",
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Network" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Browse graphs" }));
+
+    expect(await screen.findByText("arch-friend")).toBeInTheDocument();
+    expect(await screen.findByText("Browsing arch-friend's movies and saved connections in read-only mode.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Return to atlas" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Explore" })).not.toBeInTheDocument();
+    await userEvent.type(screen.getByPlaceholderText("Search this collection"), "Inter");
+    expect(screen.getByRole("button", { name: /Interstellar/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Arrival/i })).not.toBeInTheDocument();
+    await userEvent.clear(screen.getByPlaceholderText("Search this collection"));
+    await userEvent.type(screen.getByPlaceholderText("Search this collection"), "Stalker");
+    expect(screen.getByText('No existing connection for "Stalker" in arch-friend\'s collection.')).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByPlaceholderText("Search this collection"));
+    await userEvent.type(screen.getByPlaceholderText("Search this collection"), "Inter");
+    await userEvent.click(screen.getByRole("button", { name: /Interstellar/i }));
+
+    await waitFor(() => {
+      expect(graphProps.last?.movie?.id).toBe(2);
+      expect(window.location.pathname).toBe("/friend");
+      expect(window.location.search).toBe("?user=7");
+    });
+  });
+
   it("blocks choosing the same movie on both sides of a connection", async () => {
     const movie = {
       id: 7,
@@ -477,5 +679,62 @@ describe("App", () => {
 
     expect(await screen.findByText("Map how films connect.")).toBeInTheDocument();
     expect(screen.queryByText("Loaded your connections for The Godfather")).not.toBeInTheDocument();
+  });
+
+  it("renders a public shared graph view without requiring auth", async () => {
+    window.history.pushState({}, "", "/shared/share-token");
+    const sharedMovie = {
+      id: 1,
+      title: "Inception",
+      releaseYear: 2010,
+      director: "Christopher Nolan",
+      pictureUrl: null,
+      externalId: null,
+      tagline: "Your mind is the scene of the crime.",
+      synopsis: "Dreams inside dreams.",
+      genres: ["Science Fiction"],
+      runtimeMinutes: 148,
+      castMembers: ["Leonardo DiCaprio"],
+      directorNotes: "Practical spectacle.",
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { authenticated: false, user: null },
+            message: "ok",
+          }),
+        };
+      }
+      if (url.endsWith("/api/shares/share-token")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              shareToken: "share-token",
+              title: "Demo Nolan cluster",
+              graph: {
+                movie: sharedMovie,
+                movies: [sharedMovie],
+                connections: [],
+              },
+            },
+            message: "Shared graph retrieved",
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByText("Demo Nolan cluster")).toBeInTheDocument();
+    expect(await screen.findByText("Read-only export of a saved movie component.")).toBeInTheDocument();
+    await waitFor(() => expect(graphProps.last?.movie?.id).toBe(1));
   });
 });

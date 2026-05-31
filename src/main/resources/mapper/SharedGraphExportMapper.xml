@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.archipelago.mapper.SharedGraphExportMapper">
+
+    <resultMap id="SharedGraphExportResultMap" type="com.archipelago.model.SharedGraphExport">
+        <id property="id" column="id"/>
+        <result property="shareToken" column="share_token"/>
+        <result property="ownerUserId" column="owner_user_id"/>
+        <result property="rootMovieId" column="root_movie_id"/>
+        <result property="title" column="title"/>
+        <result property="creationTime" column="creation_time"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.archipelago.model.SharedGraphExport" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO shared_graph_exports (
+            share_token,
+            owner_user_id,
+            root_movie_id,
+            title,
+            creation_time
+        ) VALUES (
+            #{shareToken},
+            #{ownerUserId},
+            #{rootMovieId},
+            #{title},
+            CURRENT_TIMESTAMP
+        )
+    </insert>
+
+    <select id="findByShareToken" resultMap="SharedGraphExportResultMap">
+        SELECT * FROM shared_graph_exports WHERE share_token = #{shareToken}
+    </select>
+</mapper>

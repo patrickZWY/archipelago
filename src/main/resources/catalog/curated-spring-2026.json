@@ -1,0 +1,80 @@
+[
+  {
+    "title": "Stalker",
+    "releaseYear": 1979,
+    "director": "Andrei Tarkovsky",
+    "pictureUrl": "https://image.tmdb.org/t/p/w342/f5LB3eQVb2N7gqJd0qW8L5E7Y4C.jpg",
+    "externalId": "tt0079944",
+    "tagline": "Let your weakness melt into the room.",
+    "synopsis": "A guide leads two men into a forbidden Zone where a mysterious room is said to grant their deepest wishes.",
+    "genres": ["Science Fiction", "Drama", "Philosophical"],
+    "runtimeMinutes": 162,
+    "castMembers": ["Alexander Kaidanovsky", "Anatoly Solonitsyn", "Nikolai Grinko"],
+    "directorNotes": "Tarkovsky turns speculative fiction into a slow cinema pilgrimage about belief, doubt, and inner ruin."
+  },
+  {
+    "title": "Solaris",
+    "releaseYear": 1972,
+    "director": "Andrei Tarkovsky",
+    "pictureUrl": "https://image.tmdb.org/t/p/w342/s2bT29y0ngXxxu2IA8AOzzXTRhd.jpg",
+    "externalId": "tt0069293",
+    "tagline": "The planet has a mind of its own.",
+    "synopsis": "A psychologist travels to a space station orbiting Solaris, where the crew is haunted by physical manifestations of memory.",
+    "genres": ["Science Fiction", "Drama", "Mystery"],
+    "runtimeMinutes": 167,
+    "castMembers": ["Donatas Banionis", "Natalya Bondarchuk", "Juri Jarvet"],
+    "directorNotes": "Tarkovsky treats the cosmos as a reflective surface for memory, grief, and spiritual exhaustion."
+  },
+  {
+    "title": "Portrait of a Lady on Fire",
+    "releaseYear": 2019,
+    "director": "Celine Sciamma",
+    "pictureUrl": "https://image.tmdb.org/t/p/w342/3hb9iO4j7fX1fV9Kp4R8w2ZgY7L.jpg",
+    "externalId": "tt8613070",
+    "tagline": "Don’t regret. Remember.",
+    "synopsis": "A painter is commissioned to secretly create a wedding portrait, only to fall in love with her subject.",
+    "genres": ["Drama", "Romance", "Historical"],
+    "runtimeMinutes": 122,
+    "castMembers": ["Noemie Merlant", "Adele Haenel", "Luana Bajrami"],
+    "directorNotes": "Sciamma builds longing through glances, absence of score, and the ethics of looking."
+  },
+  {
+    "title": "Chungking Express",
+    "releaseYear": 1994,
+    "director": "Wong Kar-wai",
+    "pictureUrl": "https://image.tmdb.org/t/p/w342/kx5AmDAtK6v35FhWmZJ6L7v9C7S.jpg",
+    "externalId": "tt0109424",
+    "tagline": "What a difference a day makes.",
+    "synopsis": "Two lovelorn Hong Kong policemen drift through overlapping stories of chance encounters, missed timing, and urban desire.",
+    "genres": ["Drama", "Romance", "Crime"],
+    "runtimeMinutes": 103,
+    "castMembers": ["Takeshi Kaneshiro", "Brigitte Lin", "Tony Leung", "Faye Wong"],
+    "directorNotes": "Wong captures transience through step-printing, pop repetition, and dense city textures."
+  },
+  {
+    "title": "Memoria",
+    "releaseYear": 2021,
+    "director": "Apichatpong Weerasethakul",
+    "pictureUrl": "https://image.tmdb.org/t/p/w342/2Bx3nKhZ17O5Kn4q4c6g8MqYtYH.jpg",
+    "externalId": "tt8399288",
+    "tagline": "The sound is everywhere.",
+    "synopsis": "A woman in Colombia becomes consumed by a mysterious sonic boom that only she seems driven to investigate.",
+    "genres": ["Drama", "Mystery", "Art House"],
+    "runtimeMinutes": 136,
+    "castMembers": ["Tilda Swinton", "Jeanne Balibar", "Elkin Diaz"],
+    "directorNotes": "Apichatpong links sound, memory, and landscape through patient observation and ruptures in perception."
+  },
+  {
+    "title": "The Conversation",
+    "releaseYear": 1974,
+    "director": "Francis Ford Coppola",
+    "pictureUrl": "https://image.tmdb.org/t/p/w342/uM4J0Hq4GLM2F5cVGszQCbS8Q8b.jpg",
+    "externalId": "tt0071360",
+    "tagline": "Harry Caul is an invader of privacy. The best in the business.",
+    "synopsis": "A surveillance expert becomes haunted by the moral consequences of a recording job that may lead to murder.",
+    "genres": ["Thriller", "Drama", "Mystery"],
+    "runtimeMinutes": 113,
+    "castMembers": ["Gene Hackman", "John Cazale", "Allen Garfield"],
+    "directorNotes": "Coppola narrows paranoia to one fragile point of view and lets sound design carry the dread."
+  }
+]

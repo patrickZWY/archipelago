@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.Optional;
+import java.util.List;
 
 @Mapper
 public interface UserMapper {
@@ -25,6 +26,10 @@ public interface UserMapper {
     Optional<User> findByVerificationToken(@Param("token") String token);
 
     Optional<User> findByPasswordResetToken(@Param("token") String token);
+
+    List<User> searchByUsername(@Param("query") String query,
+                                @Param("excludeUserId") Long excludeUserId,
+                                @Param("limit") int limit);
 
     void update(User user);
 

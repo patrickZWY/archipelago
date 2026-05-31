@@ -50,6 +50,13 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(SessionResponse.authenticated(user), "Login successful"));
     }
 
+    @PostMapping("/demo")
+    public ResponseEntity<ApiResponse<SessionResponse>> demo(HttpServletRequest httpServletRequest) {
+        User user = authService.authenticateDemoUser();
+        authService.startSession(user, httpServletRequest);
+        return ResponseEntity.ok(ApiResponse.success(SessionResponse.authenticated(user), "Demo session opened"));
+    }
+
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(HttpServletRequest request) {
         authService.logout(request);

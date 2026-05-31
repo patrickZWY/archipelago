@@ -10,10 +10,24 @@
         <result property="director" column="director" />
         <result property="pictureUrl" column="picture_url"/>
         <result property="externalId" column="external_id"/>
+        <result property="tagline" column="tagline"/>
+        <result property="synopsis" column="synopsis"/>
+        <result property="genres" column="genres"/>
+        <result property="runtimeMinutes" column="runtime_minutes"/>
+        <result property="castMembers" column="cast_members"/>
+        <result property="directorNotes" column="director_notes"/>
     </resultMap>
 
     <select id="findById" parameterType="long" resultMap="MovieResultMap">
         SELECT * FROM movies WHERE id = #{id}
+    </select>
+
+    <select id="findByExternalId" resultMap="MovieResultMap">
+        SELECT * FROM movies WHERE external_id = #{externalId}
+    </select>
+
+    <select id="findByTitleAndReleaseYear" resultMap="MovieResultMap">
+        SELECT * FROM movies WHERE title = #{title} AND release_year = #{releaseYear}
     </select>
 
     <select id="countByTitle" parameterType="String" resultType="int">
@@ -24,11 +38,83 @@
         SELECT * FROM movies ORDER BY title ASC
     </select>
 
+    <select id="findDistinctByUserId" resultMap="MovieResultMap">
+        SELECT DISTINCT m.*
+        FROM movies m
+        JOIN (
+            SELECT from_movie_id AS movie_id
+            FROM connections
+            WHERE user_id = #{userId}
+            UNION
+            SELECT to_movie_id AS movie_id
+            FROM connections
+            WHERE user_id = #{userId}
+        ) graph_movies ON graph_movies.movie_id = m.id
+        ORDER BY m.title ASC
+    </select>
+
     <select id="searchMovies" resultMap="MovieResultMap">
         SELECT * FROM movies
         WHERE LOWER(title) LIKE CONCAT('%', LOWER(#{title}), '%')
-        ORDER BY title ASC
+           OR LOWER(director) LIKE CONCAT('%', LOWER(#{title}), '%')
+           OR LOWER(COALESCE(tagline, '')) LIKE CONCAT('%', LOWER(#{title}), '%')
+           OR LOWER(COALESCE(synopsis, '')) LIKE CONCAT('%', LOWER(#{title}), '%')
+           OR LOWER(COALESCE(genres, '')) LIKE CONCAT('%', LOWER(#{title}), '%')
+           OR LOWER(COALESCE(cast_members, '')) LIKE CONCAT('%', LOWER(#{title}), '%')
+        ORDER BY
+            CASE
+                WHEN LOWER(title) = LOWER(#{title}) THEN 0
+                WHEN LOWER(title) LIKE CONCAT(LOWER(#{title}), '%') THEN 1
+                WHEN LOWER(director) LIKE CONCAT('%', LOWER(#{title}), '%') THEN 2
+                WHEN LOWER(COALESCE(genres, '')) LIKE CONCAT('%', LOWER(#{title}), '%') THEN 3
+                ELSE 4
+            END,
+            title ASC
         LIMIT #{limit}
     </select>
+
+    <insert id="insert" parameterType="com.archipelago.model.Movie" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO movies (
+            title,
+            release_year,
+            director,
+            picture_url,
+            external_id,
+            tagline,
+            synopsis,
+            genres,
+            runtime_minutes,
+            cast_members,
+            director_notes
+        ) VALUES (
+            #{title},
+            #{releaseYear},
+            #{director},
+            #{pictureUrl},
+            #{externalId},
+            #{tagline},
+            #{synopsis},
+            #{genres},
+            #{runtimeMinutes},
+            #{castMembers},
+            #{directorNotes}
+        )
+    </insert>
+
+    <update id="update" parameterType="com.archipelago.model.Movie">
+        UPDATE movies
+        SET title = #{title},
+            release_year = #{releaseYear},
+            director = #{director},
+            picture_url = #{pictureUrl},
+            external_id = #{externalId},
+            tagline = #{tagline},
+            synopsis = #{synopsis},
+            genres = #{genres},
+            runtime_minutes = #{runtimeMinutes},
+            cast_members = #{castMembers},
+            director_notes = #{directorNotes}
+        WHERE id = #{id}
+    </update>
 
 </mapper>

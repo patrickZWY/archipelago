@@ -1,10 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { buildGraphElements, buildGraphLayout } from "../lib/graph";
 
+const movie = {
+  id: 1,
+  title: "Inception",
+  releaseYear: 2010,
+  director: "Christopher Nolan",
+  pictureUrl: null,
+  externalId: null,
+  tagline: null,
+  synopsis: null,
+  genres: [],
+  runtimeMinutes: null,
+  castMembers: [],
+  directorNotes: null,
+};
+
 describe("buildGraphElements", () => {
   it("creates nodes and edges from movie connections", () => {
     const elements = buildGraphElements(
-      { id: 1, title: "Inception", releaseYear: 2010, director: "Christopher Nolan", pictureUrl: null, externalId: null },
+      movie,
       [
         {
           id: 9,
@@ -26,7 +41,7 @@ describe("buildGraphElements", () => {
 
   it("keeps the selected movie focused across multi-hop graph data", () => {
     const elements = buildGraphElements(
-      { id: 1, title: "Inception", releaseYear: 2010, director: "Christopher Nolan", pictureUrl: null, externalId: null },
+      movie,
       [
         {
           id: 9,
@@ -59,7 +74,7 @@ describe("buildGraphElements", () => {
 
   it("renders the selected movie even when there are no connections", () => {
     const elements = buildGraphElements(
-      { id: 5, title: "Arrival", releaseYear: 2016, director: "Denis Villeneuve", pictureUrl: null, externalId: null },
+      { ...movie, id: 5, title: "Arrival", releaseYear: 2016, director: "Denis Villeneuve" },
       [],
     );
 
@@ -75,7 +90,7 @@ describe("buildGraphElements", () => {
 
   it("uses a preset constellation layout for graphs with more than two nodes", () => {
     const layout = buildGraphLayout(
-      { id: 1, title: "Inception", releaseYear: 2010, director: "Christopher Nolan", pictureUrl: null, externalId: null },
+      movie,
       [
         {
           id: 9,
@@ -104,5 +119,40 @@ describe("buildGraphElements", () => {
     const presetLayout = layout as { positions: Record<string, { x: number; y: number }> };
     expect(presetLayout.positions["movie-1"]).toEqual({ x: 0, y: 0 });
     expect(presetLayout.positions["movie-2"]).not.toEqual({ x: 0, y: -300 });
+  });
+
+  it("spreads disconnected filtered components into separate regions", () => {
+    const layout = buildGraphLayout(
+      movie,
+      [
+        {
+          id: 9,
+          fromMovieId: 2,
+          fromMovieTitle: "Interstellar",
+          toMovieId: 3,
+          toMovieTitle: "Memento",
+          reason: "Memory and time",
+          weight: 1.2,
+          category: "structure",
+        },
+        {
+          id: 10,
+          fromMovieId: 5,
+          fromMovieTitle: "Arrival",
+          toMovieId: 6,
+          toMovieTitle: "Blade Runner 2049",
+          reason: "Controlled Villeneuve sci-fi",
+          weight: 2.3,
+          category: "director",
+        },
+      ],
+    );
+
+    expect(layout?.name).toBe("preset");
+    const presetLayout = layout as { positions: Record<string, { x: number; y: number }> };
+    expect(presetLayout.positions["movie-1"]).toEqual({ x: 0, y: 0 });
+    expect(presetLayout.positions["movie-2"]).toBeDefined();
+    expect(presetLayout.positions["movie-5"]).toBeDefined();
+    expect(presetLayout.positions["movie-2"].x).not.toBe(presetLayout.positions["movie-5"].x);
   });
 });
