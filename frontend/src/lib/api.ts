@@ -5,6 +5,8 @@ import type {
   FriendProfile,
   FriendRequest,
   FriendRequests,
+  GlobalGraph,
+  GlobalGraphPath,
   Movie,
   MovieConnections,
   MoviePath,
@@ -12,6 +14,7 @@ import type {
   SessionResponse,
   SharedGraph,
   SharedGraphExport,
+  SharedGraphExportSummary,
   UserProfile,
 } from "./types";
 
@@ -127,6 +130,9 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify(payload),
     }),
+  getShares: () => request<SharedGraphExportSummary[]>("/api/shares"),
+  revokeShare: (shareToken: string) =>
+    request<void>(`/api/shares/${encodeURIComponent(shareToken)}`, { method: "DELETE" }),
   getSharedGraph: (shareToken: string) =>
     request<SharedGraph>(`/api/shares/${encodeURIComponent(shareToken)}`),
   getConnections: () => request<Connection[]>("/api/connections"),
@@ -182,6 +188,23 @@ export const api = {
     request<MovieConnections>(`/api/friends/${friendUserId}/movies/${movieId}/connections`),
   getFriendMoviePath: (friendUserId: number, fromMovieId: number, toMovieId: number) =>
     request<MoviePath>(`/api/friends/${friendUserId}/movies/path?from=${encodeURIComponent(fromMovieId)}&to=${encodeURIComponent(toMovieId)}`),
+  getMyGlobalGraph: () => request<GlobalGraph>("/api/global-graphs/me"),
+  getGlobalGraphFriends: () => request<PublicUser[]>("/api/global-graphs/friends"),
+  getFriendGlobalGraph: (friendUserId: number) =>
+    request<GlobalGraph>(`/api/global-graphs/friends/${friendUserId}`),
+  getAllFriendsGlobalGraph: () =>
+    request<GlobalGraph>("/api/global-graphs/friends/aggregate"),
+  getGlobalGraphPath: (scope: "me" | "friend" | "all-friends", fromMovieId: number, toMovieId: number, friendUserId?: number) => {
+    const search = new URLSearchParams({
+      scope,
+      from: String(fromMovieId),
+      to: String(toMovieId),
+    });
+    if (friendUserId) {
+      search.set("friendUserId", String(friendUserId));
+    }
+    return request<GlobalGraphPath>(`/api/global-graphs/path?${search.toString()}`);
+  },
   updateProfile: (payload: { username?: string; password?: string }) =>
     request<void>("/api/users/profile", {
       method: "PUT",

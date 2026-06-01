@@ -48,6 +48,12 @@ export type Connection = {
   category: ConnectionCategory | null;
 };
 
+export type GlobalGraphConnection = Connection & {
+  aggregate: boolean;
+  contributors: PublicUser[];
+  contributorCount: number;
+};
+
 export type MovieConnections = {
   movie: Movie;
   movies: Movie[];
@@ -59,6 +65,18 @@ export type MoviePath = {
   toMovie: Movie;
   movies: Movie[];
   connections: Connection[];
+};
+
+export type GlobalGraph = {
+  movies: Movie[];
+  connections: GlobalGraphConnection[];
+};
+
+export type GlobalGraphPath = {
+  fromMovie: Movie;
+  toMovie: Movie;
+  movies: Movie[];
+  connections: GlobalGraphConnection[];
 };
 
 export type CatalogImport = {
@@ -73,6 +91,15 @@ export type SharedGraphExport = {
   shareUrl: string;
   title: string;
   graph: MovieConnections;
+};
+
+export type SharedGraphExportSummary = {
+  shareToken: string;
+  shareUrl: string;
+  title: string;
+  rootMovieId: number;
+  rootMovieTitle: string;
+  creationTime: string;
 };
 
 export type SharedGraph = {

@@ -173,10 +173,10 @@ public class AuthServiceImpl implements AuthService {
             throw new InvalidTokenException("Missing reset token");
         }
         User user = userMapper.findByPasswordResetToken(token)
-                .orElseThrow(() -> new InvalidTokenException("Invalid or expired reset token"));
+                .orElseThrow(() -> new InvalidTokenException("Invalid reset token"));
         if (user.getPasswordResetTokenExpireTime() == null ||
                 user.getPasswordResetTokenExpireTime().isBefore(LocalDateTime.now())) {
-            throw new InvalidTokenException("Invalid or expired reset token");
+            throw new InvalidTokenException("Reset token has expired");
         }
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setPasswordResetToken(null);

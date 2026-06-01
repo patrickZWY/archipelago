@@ -1,21 +1,24 @@
-import { startTransition, useCallback, useDeferredValue, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { ConnectionGraph } from "./components/ConnectionGraph";
+import { Suspense, lazy, startTransition, useCallback, useDeferredValue, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { ApiError, api } from "./lib/api";
 import { CONNECTION_CATEGORY_OPTIONS, formatConnectionCategory, type ConnectionCategory } from "./lib/connection-categories";
 import type {
   Connection,
   FriendProfile,
   FriendRequests,
+  GlobalGraph,
+  GlobalGraphPath,
   Movie,
   MoviePath,
   PublicUser,
   SessionResponse,
   SharedGraph,
+  SharedGraphExportSummary,
   UserProfile,
 } from "./lib/types";
 
 type AuthMode = "login" | "register" | "forgot";
-type AppPath = "/" | "/explore" | "/connections" | "/network" | "/friend" | "/verify" | "/reset-password" | "/shared";
+type AppPath = "/" | "/explore" | "/connections" | "/network" | "/global-graphs" | "/friend" | "/verify" | "/reset-password" | "/shared";
+type GlobalGraphScope = "me" | "friend" | "all-friends";
 
 type ConnectionForm = {
   fromMovieId: string;
@@ -44,6 +47,60 @@ const emptyMoviePickerState: MoviePickerState = {
   results: [],
   selected: null,
 };
+
+const ConnectionGraph = lazy(async () => {
+  const module = await import("./components/ConnectionGraph");
+  return { default: module.ConnectionGraph };
+});
+
+type AuthFieldErrors = {
+  email?: string;
+  password?: string;
+  username?: string;
+};
+
+type ResetFieldErrors = {
+  token?: string;
+  newPassword?: string;
+};
+
+type ConnectionGraphProps = {
+  movie: Movie | null;
+  movies?: Movie[];
+  connections: Connection[];
+  layoutMode?: "default" | "compact";
+  dimMovieIds?: number[];
+  dimConnectionIds?: number[];
+  selectedMovieId: number | null;
+  selectedConnectionId: number | null;
+  onMovieSelect: (movieId: number) => void;
+  onConnectionSelect: (connectionId: number) => void;
+};
+
+function parseFieldErrors<T extends Record<string, string | undefined>>(error: unknown, keys: Array<keyof T>): T | null {
+  if (!(error instanceof ApiError) || !error.data || typeof error.data !== "object") {
+    return null;
+  }
+  const payload = error.data as Record<string, unknown>;
+  const next = {} as T;
+  let hasMatch = false;
+  for (const key of keys) {
+    const value = payload[key as string];
+    if (typeof value === "string") {
+      next[key] = value as T[keyof T];
+      hasMatch = true;
+    }
+  }
+  return hasMatch ? next : null;
+}
+
+function GraphCanvas(props: ConnectionGraphProps) {
+  return (
+    <Suspense fallback={<div className="graph-loading">Loading graph renderer...</div>}>
+      <ConnectionGraph {...props} />
+    </Suspense>
+  );
+}
 
 export default function App() {
   const [session, setSession] = useState<SessionResponse | null>(null);
@@ -150,6 +207,8 @@ export default function App() {
     ? "/connections"
     : pathname === "/network"
       ? "/network"
+      : pathname === "/global-graphs"
+        ? "/global-graphs"
       : "/explore";
 
   return (
@@ -168,6 +227,7 @@ export default function App() {
       {currentPath === "/connections" ? <ConnectionsPage setStatus={setStatus} /> : null}
       {currentPath === "/explore" ? <ExplorePage setStatus={setStatus} /> : null}
       {currentPath === "/network" ? <NetworkPage setStatus={setStatus} /> : null}
+      {currentPath === "/global-graphs" ? <GlobalGraphsPage setStatus={setStatus} /> : null}
     </AppLayout>
   );
 }
@@ -185,7 +245,7 @@ function AuthPage({
 }) {
   const [mode, setMode] = useState<AuthMode>("login");
   const [form, setForm] = useState({ email: "", password: "", username: "" });
-  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; username?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({});
   const [formError, setFormError] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -210,19 +270,15 @@ function AuthPage({
       onOpenWorkspace();
       setStatus("Session opened");
     } catch (error) {
-      if (error instanceof ApiError && error.data && typeof error.data === "object" && mode === "register") {
-        const data = error.data as Record<string, string>;
-        setFieldErrors({
-          email: data.email,
-          password: data.password,
-          username: data.username,
-        });
-        const message = data.email || data.password || data.username || error.message;
+      const nextFieldErrors = parseFieldErrors<AuthFieldErrors>(error, ["email", "password", "username"]);
+      if (nextFieldErrors) {
+        setFieldErrors(nextFieldErrors);
+        const message = nextFieldErrors.email || nextFieldErrors.password || nextFieldErrors.username || (error as Error).message;
         setFormError(message);
         setStatus(message);
         return;
       }
-      if (error instanceof ApiError && (mode === "login" || mode === "register" || mode === "forgot")) {
+      if (error instanceof ApiError) {
         setFormError(error.message);
         setStatus(error.message);
         return;
@@ -271,19 +327,29 @@ function AuthPage({
             <span>Email</span>
             <input
               value={form.email}
-              onChange={(event) => setForm({ ...form, email: event.target.value })}
+              onChange={(event) => {
+                setForm({ ...form, email: event.target.value });
+                if (fieldErrors.email) {
+                  setFieldErrors((current) => ({ ...current, email: undefined }));
+                }
+              }}
               type="email"
               autoComplete="email"
               required
             />
-            {mode === "register" && fieldErrors.email && <small className="field-error">{fieldErrors.email}</small>}
+            {fieldErrors.email && <small className="field-error">{fieldErrors.email}</small>}
           </label>
           {mode !== "forgot" && (
             <label>
               <span>Password</span>
               <input
                 value={form.password}
-                onChange={(event) => setForm({ ...form, password: event.target.value })}
+                onChange={(event) => {
+                  setForm({ ...form, password: event.target.value });
+                  if (fieldErrors.password) {
+                    setFieldErrors((current) => ({ ...current, password: undefined }));
+                  }
+                }}
                 type="password"
                 autoComplete={mode === "register" ? "new-password" : "current-password"}
                 required
@@ -291,7 +357,7 @@ function AuthPage({
               {mode === "register" && (
                 <small className="field-hint">Use at least 8 characters.</small>
               )}
-              {mode === "register" && fieldErrors.password && <small className="field-error">{fieldErrors.password}</small>}
+              {fieldErrors.password && <small className="field-error">{fieldErrors.password}</small>}
             </label>
           )}
           {mode === "register" && (
@@ -299,7 +365,12 @@ function AuthPage({
               <span>Username</span>
               <input
                 value={form.username}
-                onChange={(event) => setForm({ ...form, username: event.target.value })}
+                onChange={(event) => {
+                  setForm({ ...form, username: event.target.value });
+                  if (fieldErrors.username) {
+                    setFieldErrors((current) => ({ ...current, username: undefined }));
+                  }
+                }}
                 autoComplete="username"
                 required
               />
@@ -326,8 +397,8 @@ function AppLayout({
   children,
 }: {
   session: SessionResponse;
-  currentPath: "/explore" | "/connections" | "/network";
-  onNavigate: (path: "/explore" | "/connections" | "/network") => void;
+  currentPath: "/explore" | "/connections" | "/network" | "/global-graphs";
+  onNavigate: (path: "/explore" | "/connections" | "/network" | "/global-graphs") => void;
   onLogout: () => Promise<void>;
   status: string;
   children: ReactNode;
@@ -359,6 +430,12 @@ function AppLayout({
             >
               Network
             </button>
+            <button
+              className={currentPath === "/global-graphs" ? "pill active" : "pill"}
+              onClick={() => onNavigate("/global-graphs")}
+            >
+              Global Graphs
+            </button>
           </nav>
           <button className="ghost" onClick={() => void onLogout()}>Logout</button>
         </div>
@@ -375,33 +452,55 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [searchResults, setSearchResults] = useState<Movie[]>([]);
+  const [highlightedSearchIndex, setHighlightedSearchIndex] = useState(0);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [componentMovies, setComponentMovies] = useState<Movie[]>([]);
   const [movieConnections, setMovieConnections] = useState<Connection[]>([]);
   const [selectedGraphMovieId, setSelectedGraphMovieId] = useState<number | null>(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState<number | null>(null);
+  const [focusedContributorUserId, setFocusedContributorUserId] = useState<number | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<ConnectionCategory | "all">("all");
   const [minimumWeight, setMinimumWeight] = useState("0");
   const [pathFromMovieId, setPathFromMovieId] = useState("");
   const [pathToMovieId, setPathToMovieId] = useState("");
   const [moviePath, setMoviePath] = useState<MoviePath | null>(null);
   const [shareUrl, setShareUrl] = useState("");
+  const [shares, setShares] = useState<SharedGraphExportSummary[]>([]);
+
+  useEffect(() => {
+    void refreshShares();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!deferredQuery.trim()) {
       setSearchResults([]);
+      setHighlightedSearchIndex(0);
       return;
     }
     const timeout = window.setTimeout(() => {
       void api.searchMovies(deferredQuery.trim())
-        .then((results) => startTransition(() => setSearchResults(results)))
+        .then((results) => startTransition(() => {
+          setSearchResults(results);
+          setHighlightedSearchIndex(0);
+        }))
         .catch((error: Error) => setStatus(error.message));
     }, 180);
     return () => window.clearTimeout(timeout);
   }, [deferredQuery, setStatus]);
 
+  async function refreshShares() {
+    try {
+      setShares(await api.getShares());
+    } catch (error) {
+      setStatus((error as Error).message);
+    }
+  }
+
   async function pickMovie(movie: Movie) {
     setSelectedMovie(movie);
+    setSearchResults([]);
+    setHighlightedSearchIndex(0);
     try {
       const data = await api.getMovieConnections(movie.id);
       setComponentMovies(data.movies ?? [movie]);
@@ -481,9 +580,43 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
         title: `${selectedMovie.title} graph`,
       });
       setShareUrl(exportResponse.shareUrl);
+      await refreshShares();
       setStatus(`Created a read-only share for ${selectedMovie.title}`);
     } catch (error) {
       setStatus((error as Error).message);
+    }
+  }
+
+  async function revokeShare(shareToken: string) {
+    try {
+      await api.revokeShare(shareToken);
+      setShares((current) => current.filter((share) => share.shareToken !== shareToken));
+      if (shareUrl.endsWith(`/shared/${shareToken}`)) {
+        setShareUrl("");
+      }
+      setStatus("Share link revoked");
+    } catch (error) {
+      setStatus((error as Error).message);
+    }
+  }
+
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (searchResults.length === 0) {
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightedSearchIndex((current) => (current + 1) % searchResults.length);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightedSearchIndex((current) => (current - 1 + searchResults.length) % searchResults.length);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void pickMovie(searchResults[highlightedSearchIndex] ?? searchResults[0]);
     }
   }
 
@@ -498,14 +631,22 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
           className="search-input"
           placeholder="Search local catalog, even with rough spelling"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setHighlightedSearchIndex(0);
+          }}
+          onKeyDown={handleSearchKeyDown}
         />
         {deferredQuery.trim().length > 1 && searchResults.length === 0 && (
           <p className="empty-state">No close matches yet. Try another title, director, or rough spelling.</p>
         )}
         <div className="movie-grid">
-          {searchResults.map((movie) => (
-            <button key={movie.id} className="movie-card" onClick={() => void pickMovie(movie)}>
+          {searchResults.map((movie, index) => (
+            <button
+              key={movie.id}
+              className={index === highlightedSearchIndex ? "movie-card active" : "movie-card"}
+              onClick={() => void pickMovie(movie)}
+            >
               <strong>{movie.title}</strong>
               <span>{movie.releaseYear}</span>
               <span>{movie.director}</span>
@@ -548,7 +689,7 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
                 />
               </label>
             </div>
-            <ConnectionGraph
+            <GraphCanvas
               movie={selectedMovie}
               connections={filteredConnections}
               selectedMovieId={selectedGraphMovieId}
@@ -564,6 +705,32 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
           </div>
 
           <div className="graph-detail-stack">
+            <section className="panel inset-panel">
+              <div className="panel-header">
+                <h3>Share links</h3>
+                <p>{shares.length > 0 ? "Manage your existing public graph exports." : "Create a public link for the current graph when you're ready."}</p>
+              </div>
+              {shareUrl ? <a className="share-link" href={shareUrl}>{shareUrl}</a> : null}
+              {shares.length > 0 ? (
+                <div className="list dense-list">
+                  {shares.map((share) => (
+                    <article key={share.shareToken} className="connection-card share-card">
+                      <strong>{share.title}</strong>
+                      <span className="detail-stat">{share.rootMovieTitle}</span>
+                      <a className="share-link" href={share.shareUrl}>{share.shareUrl}</a>
+                      <small>Created {formatTimestamp(share.creationTime)}</small>
+                      <div className="pill-row">
+                        <button className="pill" type="button" onClick={() => window.open(share.shareUrl, "_blank", "noopener,noreferrer")}>Open</button>
+                        <button className="pill" type="button" onClick={() => void revokeShare(share.shareToken)}>Revoke</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="empty-state">No share links yet.</p>
+              )}
+            </section>
+
             <section className="panel inset-panel">
               <div className="panel-header">
                 <h3>Movie detail</h3>
@@ -697,6 +864,400 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
             </section>
           </div>
         </div>
+      </section>
+    </main>
+  );
+}
+
+function GlobalGraphsPage({ setStatus }: { setStatus: (status: string) => void }) {
+  const [scope, setScope] = useState<GlobalGraphScope>("me");
+  const [friends, setFriends] = useState<PublicUser[]>([]);
+  const [selectedFriendUserId, setSelectedFriendUserId] = useState<number | null>(null);
+  const [graph, setGraph] = useState<GlobalGraph | null>(null);
+  const [selectedGraphMovieId, setSelectedGraphMovieId] = useState<number | null>(null);
+  const [selectedConnectionId, setSelectedConnectionId] = useState<number | null>(null);
+  const [focusedContributorUserId, setFocusedContributorUserId] = useState<number | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<ConnectionCategory | "all">("all");
+  const [minimumWeight, setMinimumWeight] = useState("0");
+  const [pathFromMovieId, setPathFromMovieId] = useState("");
+  const [pathToMovieId, setPathToMovieId] = useState("");
+  const [moviePath, setMoviePath] = useState<GlobalGraphPath | null>(null);
+
+  useEffect(() => {
+    void api.getGlobalGraphFriends()
+      .then((nextFriends) => {
+        setFriends(nextFriends);
+        setSelectedFriendUserId((current) => current ?? nextFriends[0]?.id ?? null);
+      })
+      .catch((error: Error) => setStatus(error.message));
+  }, [setStatus]);
+
+  useEffect(() => {
+    void loadGraph(scope, selectedFriendUserId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, selectedFriendUserId]);
+
+  async function loadGraph(nextScope: GlobalGraphScope, friendUserId: number | null) {
+    resetDependentState();
+    try {
+      if (nextScope === "me") {
+        const data = await api.getMyGlobalGraph();
+        setGraph(data);
+        setSelectedGraphMovieId(data.movies[0]?.id ?? null);
+        setPathFromMovieId(data.movies[0] ? String(data.movies[0].id) : "");
+        setStatus("Loaded your full graph");
+        return;
+      }
+      if (nextScope === "all-friends") {
+        const data = await api.getAllFriendsGlobalGraph();
+        setGraph(data);
+        setSelectedGraphMovieId(data.movies[0]?.id ?? null);
+        setPathFromMovieId(data.movies[0] ? String(data.movies[0].id) : "");
+        setStatus(data.movies.length > 0 ? "Loaded the merged graph from you and all accepted friends" : "No graph data is available yet for you or your accepted friends");
+        return;
+      }
+      if (!friendUserId) {
+        setGraph(null);
+        setStatus(friends.length > 0 ? "Choose a friend to load their full graph" : "Add an accepted friend before browsing friend global graphs");
+        return;
+      }
+      const data = await api.getFriendGlobalGraph(friendUserId);
+      const friend = friends.find((entry) => entry.id === friendUserId);
+      setGraph(data);
+      setSelectedGraphMovieId(data.movies[0]?.id ?? null);
+      setPathFromMovieId(data.movies[0] ? String(data.movies[0].id) : "");
+      setStatus(`Loaded ${friend?.username ?? "your friend"}'s full graph`);
+    } catch (error) {
+      setGraph(null);
+      setStatus((error as Error).message);
+    }
+  }
+
+  function resetDependentState() {
+    setGraph(null);
+    setSelectedGraphMovieId(null);
+    setSelectedConnectionId(null);
+    setFocusedContributorUserId(null);
+    setCategoryFilter("all");
+    setMinimumWeight("0");
+    setPathFromMovieId("");
+    setPathToMovieId("");
+    setMoviePath(null);
+  }
+
+  const filteredConnections = (graph?.connections ?? []).filter((connection) => {
+    const passesCategory = categoryFilter === "all" || connection.category === categoryFilter;
+    const passesWeight = connection.weight >= Number(minimumWeight || "0");
+    return passesCategory && passesWeight;
+  });
+  const selectedGraphMovie = (graph?.movies ?? []).find((movie) => movie.id === selectedGraphMovieId) ?? graph?.movies[0] ?? null;
+  const selectedConnection = filteredConnections.find((connection) => connection.id === selectedConnectionId)
+    ?? graph?.connections.find((connection) => connection.id === selectedConnectionId)
+    ?? null;
+  const selectedMovieConnectionCount = selectedGraphMovie
+    ? filteredConnections.filter((connection) => connection.fromMovieId === selectedGraphMovie.id || connection.toMovieId === selectedGraphMovie.id).length
+    : 0;
+  const selectedMovieIsFilteredOut = Boolean(
+    selectedGraphMovie
+    && filteredConnections.length > 0
+    && selectedMovieConnectionCount === 0,
+  );
+  const selectedFriend = friends.find((friend) => friend.id === selectedFriendUserId) ?? null;
+  const aggregateContributors = Array.from(new Map(
+    (graph?.connections ?? [])
+      .flatMap((connection) => connection.aggregate ? connection.contributors : [])
+      .map((contributor) => [contributor.id, contributor]),
+  ).values()).sort((left, right) => left.username.localeCompare(right.username));
+  const focusedContributor = aggregateContributors.find((contributor) => contributor.id === focusedContributorUserId) ?? null;
+  const focusedContributorConnectionIds = focusedContributorUserId === null
+    ? new Set<number>()
+    : new Set(
+      filteredConnections
+        .filter((connection) => connection.aggregate && connection.contributors.some((contributor) => contributor.id === focusedContributorUserId))
+        .map((connection) => connection.id),
+    );
+  const focusedContributorMovieIds = focusedContributorUserId === null
+    ? new Set<number>()
+    : new Set(
+      filteredConnections
+        .filter((connection) => connection.aggregate && connection.contributors.some((contributor) => contributor.id === focusedContributorUserId))
+        .flatMap((connection) => [connection.fromMovieId, connection.toMovieId]),
+    );
+  const dimConnectionIds = focusedContributorUserId === null
+    ? []
+    : filteredConnections
+      .filter((connection) => !focusedContributorConnectionIds.has(connection.id))
+      .map((connection) => connection.id);
+  const dimMovieIds = focusedContributorUserId === null
+    ? []
+    : (graph?.movies ?? [])
+      .filter((graphMovie) => !focusedContributorMovieIds.has(graphMovie.id))
+      .map((graphMovie) => graphMovie.id);
+
+  async function explainPath() {
+    if (!pathFromMovieId || !pathToMovieId) {
+      setStatus("Choose two movies from the current scope first");
+      return;
+    }
+    if (scope === "friend" && !selectedFriendUserId) {
+      setStatus("Choose a friend graph first");
+      return;
+    }
+    try {
+      const path = await api.getGlobalGraphPath(scope, Number(pathFromMovieId), Number(pathToMovieId), selectedFriendUserId ?? undefined);
+      setMoviePath(path);
+      setSelectedConnectionId(path.connections[0]?.id ?? null);
+      setStatus(`Explained the path from ${path.fromMovie.title} to ${path.toMovie.title}`);
+    } catch (error) {
+      setMoviePath(null);
+      setStatus((error as Error).message);
+    }
+  }
+
+  return (
+    <main className="page-stack">
+      <section className="panel page-panel">
+        <div className="panel-header">
+          <h2>Global Graphs</h2>
+          <p>Browse full saved graphs across your account or friend scopes without picking a root movie first.</p>
+        </div>
+        <div className="graph-controls">
+          <label>
+            <span>Scope</span>
+            <select
+              aria-label="Graph scope"
+              value={scope}
+              onChange={(event) => {
+                const nextScope = event.target.value as GlobalGraphScope;
+                setScope(nextScope);
+                if (nextScope === "friend" && !selectedFriendUserId && friends[0]) {
+                  setSelectedFriendUserId(friends[0].id);
+                }
+              }}
+            >
+              <option value="me">Me</option>
+              <option value="friend">Friend</option>
+              <option value="all-friends">All Friends</option>
+            </select>
+          </label>
+          {scope === "friend" ? (
+            <label>
+              <span>Friend</span>
+              <select
+                aria-label="Friend picker"
+                value={selectedFriendUserId ?? ""}
+                onChange={(event) => setSelectedFriendUserId(event.target.value ? Number(event.target.value) : null)}
+              >
+                <option value="">Select a friend</option>
+                {friends.map((friend) => (
+                  <option key={`global-friend-${friend.id}`} value={friend.id}>{friend.username}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="panel page-panel graph-panel">
+        <div className="panel-header">
+          <h2>Full Graph Canvas</h2>
+          <p>
+            {scope === "me"
+              ? "Every saved component in your graph."
+              : scope === "all-friends"
+                ? "Merged graph from you and your accepted friends, with duplicate movie pairs collapsed."
+                : selectedFriend
+                  ? `${selectedFriend.username}'s full graph.`
+                  : "Choose a friend to load their full graph."}
+          </p>
+        </div>
+        {graph && graph.movies.length > 0 ? (
+          <div className="graph-inspector-grid">
+            <div className="graph-frame-stack">
+              <div className="graph-controls">
+                <label>
+                  <span>Category filter</span>
+                  <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as ConnectionCategory | "all")}>
+                    <option value="all">All categories</option>
+                    {CONNECTION_CATEGORY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Minimum weight</span>
+                  <input
+                    aria-label="Minimum weight"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={minimumWeight}
+                    onChange={(event) => setMinimumWeight(event.target.value)}
+                  />
+                </label>
+              </div>
+              {scope === "all-friends" && aggregateContributors.length > 0 ? (
+                <div className="stack">
+                  <div className="panel-header compact-header">
+                    <h3>Friend Focus</h3>
+                    <p>Highlight one contributor's edges, including your own graph, and dim the rest of the merged view.</p>
+                  </div>
+                  <div className="pill-row">
+                    <button
+                      className="pill"
+                      type="button"
+                      onClick={() => setFocusedContributorUserId(null)}
+                    >
+                      All contributors
+                    </button>
+                    {aggregateContributors.map((contributor) => (
+                      <button
+                        key={`aggregate-contributor-${contributor.id}`}
+                        className="pill"
+                        type="button"
+                        onClick={() => setFocusedContributorUserId(contributor.id)}
+                      >
+                        {contributor.username}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <GraphCanvas
+                movie={selectedGraphMovie}
+                movies={graph.movies}
+                connections={filteredConnections}
+                layoutMode={scope === "all-friends" ? "compact" : "default"}
+                dimMovieIds={dimMovieIds}
+                dimConnectionIds={dimConnectionIds}
+                selectedMovieId={selectedGraphMovieId}
+                selectedConnectionId={selectedConnectionId}
+                onMovieSelect={(movieId) => {
+                  setSelectedGraphMovieId(movieId);
+                  setSelectedConnectionId(null);
+                }}
+                onConnectionSelect={(connectionId) => setSelectedConnectionId(connectionId)}
+              />
+            </div>
+
+            <div className="graph-detail-stack">
+              <section className="panel inset-panel">
+                <div className="panel-header">
+                  <h3>Movie Detail</h3>
+                  <p>{selectedGraphMovie ? selectedGraphMovie.title : "Select a movie node in the graph."}</p>
+                </div>
+                {selectedGraphMovie ? (
+                  <div className="stack">
+                    <p className="detail-stat"><strong>{selectedGraphMovie.releaseYear}</strong> / {selectedGraphMovie.director}</p>
+                    {selectedGraphMovie.tagline && <p className="detail-copy">{selectedGraphMovie.tagline}</p>}
+                    {selectedGraphMovie.synopsis && <p className="detail-copy">{selectedGraphMovie.synopsis}</p>}
+                    {(selectedGraphMovie.genres ?? []).length > 0 && <p className="detail-stat">Genres: {(selectedGraphMovie.genres ?? []).join(", ")}</p>}
+                    {selectedGraphMovie.runtimeMinutes && <p className="detail-stat">Runtime: {selectedGraphMovie.runtimeMinutes} minutes</p>}
+                    {(selectedGraphMovie.castMembers ?? []).length > 0 && <p className="detail-stat">Cast: {(selectedGraphMovie.castMembers ?? []).join(", ")}</p>}
+                    {selectedGraphMovie.directorNotes && <p className="detail-copy">{selectedGraphMovie.directorNotes}</p>}
+                    <p className="detail-stat">{selectedMovieConnectionCount} visible connections in this view</p>
+                    {selectedMovieIsFilteredOut ? <p className="empty-state">The current filters isolate this movie. Pick another node or relax the filters.</p> : null}
+                    <div className="pill-row">
+                      <button className="pill" onClick={() => setPathFromMovieId(String(selectedGraphMovie.id))}>Use as path start</button>
+                      <button className="pill" onClick={() => setPathToMovieId(String(selectedGraphMovie.id))}>Use as path end</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="empty-state">The drawer updates when you click a node.</p>
+                )}
+              </section>
+
+              <section className="panel inset-panel">
+                <div className="panel-header">
+                  <h3>Connection Detail</h3>
+                  <p>{selectedConnection ? `${selectedConnection.fromMovieTitle} -> ${selectedConnection.toMovieTitle}` : "Select an edge to inspect it."}</p>
+                </div>
+                {selectedConnection ? (
+                  <div className="stack">
+                    <p>{selectedConnection.reason}</p>
+                    <small>{formatConnectionCategory(selectedConnection.category)} / weight {selectedConnection.weight}</small>
+                    {selectedConnection.aggregate ? (
+                      <>
+                        <p className="detail-stat">Contributors: {selectedConnection.contributorCount}</p>
+                        <p className="detail-stat">
+                          Friend sources: {selectedConnection.contributors.map((contributor) => contributor.username).join(", ") || "None"}
+                        </p>
+                        {focusedContributor ? (
+                          <p className="detail-stat">
+                            Focused contributor: {selectedConnection.contributors.some((contributor) => contributor.id === focusedContributor.id)
+                              ? focusedContributor.username
+                              : `${focusedContributor.username} is dimmed for this edge`}
+                          </p>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="empty-state">Pick an edge to inspect why the films connect.</p>
+                )}
+              </section>
+
+              <section className="panel inset-panel">
+                <div className="panel-header">
+                  <h3>Path Explanation</h3>
+                  <p>Choose any two movies inside the selected scope and inspect the shortest path.</p>
+                </div>
+                <div className="stack">
+                  <label>
+                    <span>From movie</span>
+                    <select value={pathFromMovieId} onChange={(event) => setPathFromMovieId(event.target.value)}>
+                      <option value="">Select a movie</option>
+                      {(graph.movies ?? []).map((movie) => (
+                        <option key={`global-path-from-${movie.id}`} value={movie.id}>{movie.title}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>To movie</span>
+                    <select value={pathToMovieId} onChange={(event) => setPathToMovieId(event.target.value)}>
+                      <option value="">Select a movie</option>
+                      {(graph.movies ?? []).map((movie) => (
+                        <option key={`global-path-to-${movie.id}`} value={movie.id}>{movie.title}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="primary" type="button" onClick={() => void explainPath()}>
+                    Explain shortest path
+                  </button>
+                  {moviePath ? (
+                    <div className="path-card">
+                      <strong>{moviePath.movies.map((movie) => movie.title).join(" -> ")}</strong>
+                      <div className="list dense-list">
+                        {moviePath.connections.map((connection, index) => (
+                          <button
+                            key={`global-path-connection-${connection.id}`}
+                            className="picker-result"
+                            type="button"
+                            onClick={() => setSelectedConnectionId(connection.id)}
+                          >
+                            <strong>{`${moviePath.movies[index]?.title} -> ${moviePath.movies[index + 1]?.title}`}</strong>
+                            <span>{formatConnectionCategory(connection.category)} / weight {connection.weight}</span>
+                            <span>{connection.aggregate ? `${connection.contributorCount} contributing graph owners` : connection.reason}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            </div>
+          </div>
+        ) : (
+          <p className="empty-state">
+            {scope === "friend"
+              ? friends.length === 0
+                ? "Add an accepted friend before browsing global friend graphs."
+                : "Choose a friend to load their full graph."
+              : scope === "all-friends"
+                ? "No graph data is available yet for you or your accepted friends."
+                : "You have no saved graph data yet."}
+          </p>
+        )}
       </section>
     </main>
   );
@@ -1217,12 +1778,39 @@ function MovieSearchField({
   onSelect: (movie: Movie) => void;
   onClear: () => void;
 }) {
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [results, value]);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (results.length === 0) {
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightedIndex((current) => (current + 1) % results.length);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightedIndex((current) => (current - 1 + results.length) % results.length);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onSelect(results[highlightedIndex] ?? results[0]);
+    }
+  }
+
   return (
     <label className="movie-picker">
       <span>{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onKeyDown={handleKeyDown}
         placeholder="Find a movie"
         required
       />
@@ -1238,8 +1826,13 @@ function MovieSearchField({
       )}
       {results.length > 0 && (
         <div className="picker-results">
-          {results.map((movie) => (
-            <button key={`${label}-${movie.id}`} className="picker-result" type="button" onClick={() => onSelect(movie)}>
+          {results.map((movie, index) => (
+            <button
+              key={`${label}-${movie.id}`}
+              className={index === highlightedIndex ? "picker-result active" : "picker-result"}
+              type="button"
+              onClick={() => onSelect(movie)}
+            >
               <strong>{movie.title}</strong>
               <span>{movie.releaseYear} / {movie.director}</span>
             </button>
@@ -1272,6 +1865,8 @@ function FriendGraphPage({
   const [movieConnections, setMovieConnections] = useState<Connection[]>([]);
   const [selectedGraphMovieId, setSelectedGraphMovieId] = useState<number | null>(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState<number | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<ConnectionCategory | "all">("all");
+  const [minimumWeight, setMinimumWeight] = useState("0");
   const [pathFromMovieId, setPathFromMovieId] = useState("");
   const [pathToMovieId, setPathToMovieId] = useState("");
   const [moviePath, setMoviePath] = useState<MoviePath | null>(null);
@@ -1290,6 +1885,8 @@ function FriendGraphPage({
         setMovieConnections([]);
         setSelectedGraphMovieId(null);
         setSelectedConnectionId(null);
+        setCategoryFilter("all");
+        setMinimumWeight("0");
         setPathFromMovieId("");
         setPathToMovieId("");
         setMoviePath(null);
@@ -1315,6 +1912,8 @@ function FriendGraphPage({
       setMovieConnections(data.connections);
       setSelectedGraphMovieId(data.movie.id);
       setSelectedConnectionId(null);
+      setCategoryFilter("all");
+      setMinimumWeight("0");
       setPathFromMovieId(String(data.movie.id));
       setPathToMovieId("");
       setMoviePath(null);
@@ -1340,8 +1939,23 @@ function FriendGraphPage({
     }
   }
 
+  const filteredConnections = movieConnections.filter((connection) => {
+    const passesCategory = categoryFilter === "all" || connection.category === categoryFilter;
+    const passesWeight = connection.weight >= Number(minimumWeight || "0");
+    return passesCategory && passesWeight;
+  });
   const selectedGraphMovie = componentMovies.find((movie) => movie.id === selectedGraphMovieId) ?? selectedMovie;
-  const selectedConnection = movieConnections.find((connection) => connection.id === selectedConnectionId) ?? null;
+  const selectedConnection = filteredConnections.find((connection) => connection.id === selectedConnectionId)
+    ?? movieConnections.find((connection) => connection.id === selectedConnectionId)
+    ?? null;
+  const selectedMovieConnectionCount = selectedGraphMovie
+    ? filteredConnections.filter((connection) => connection.fromMovieId === selectedGraphMovie.id || connection.toMovieId === selectedGraphMovie.id).length
+    : 0;
+  const selectedMovieIsFilteredOut = Boolean(
+    selectedGraphMovie
+    && filteredConnections.length > 0
+    && selectedMovieConnectionCount === 0,
+  );
   const normalizedCollectionQuery = deferredCollectionQuery.trim().toLowerCase();
   const trimmedCollectionQuery = deferredCollectionQuery.trim();
   const filteredCollectionMovies = (profile?.movies ?? []).filter((movie) => {
@@ -1422,9 +2036,30 @@ function FriendGraphPage({
               {selectedMovie ? (
                 <div className="graph-inspector-grid">
                   <div className="graph-frame-stack">
-                    <ConnectionGraph
+                    <div className="graph-controls">
+                      <label>
+                        <span>Category filter</span>
+                        <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as ConnectionCategory | "all")}>
+                          <option value="all">All categories</option>
+                          {CONNECTION_CATEGORY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Minimum weight</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={minimumWeight}
+                          onChange={(event) => setMinimumWeight(event.target.value)}
+                        />
+                      </label>
+                    </div>
+                    <GraphCanvas
                       movie={selectedMovie}
-                      connections={movieConnections}
+                      connections={filteredConnections}
                       selectedMovieId={selectedGraphMovieId}
                       selectedConnectionId={selectedConnectionId}
                       onMovieSelect={(movieId) => {
@@ -1445,6 +2080,14 @@ function FriendGraphPage({
                           <p className="detail-stat"><strong>{selectedGraphMovie.releaseYear}</strong> / {selectedGraphMovie.director}</p>
                           {selectedGraphMovie.tagline && <p className="detail-copy">{selectedGraphMovie.tagline}</p>}
                           {selectedGraphMovie.synopsis && <p className="detail-copy">{selectedGraphMovie.synopsis}</p>}
+                          {(selectedGraphMovie.genres ?? []).length > 0 && <p className="detail-stat">Genres: {(selectedGraphMovie.genres ?? []).join(", ")}</p>}
+                          {selectedGraphMovie.runtimeMinutes && <p className="detail-stat">Runtime: {selectedGraphMovie.runtimeMinutes} minutes</p>}
+                          {(selectedGraphMovie.castMembers ?? []).length > 0 && <p className="detail-stat">Cast: {(selectedGraphMovie.castMembers ?? []).join(", ")}</p>}
+                          {selectedGraphMovie.directorNotes && <p className="detail-copy">{selectedGraphMovie.directorNotes}</p>}
+                          <p className="detail-stat">{selectedMovieConnectionCount} visible connections in this view</p>
+                          {selectedMovieIsFilteredOut ? (
+                            <p className="empty-state">The current filters isolate this movie. Pick another node or relax the filters.</p>
+                          ) : null}
                           <div className="pill-row">
                             <button className="pill" onClick={() => setPathFromMovieId(String(selectedGraphMovie.id))}>Use as path start</button>
                             <button className="pill" onClick={() => setPathToMovieId(String(selectedGraphMovie.id))}>Use as path end</button>
@@ -1491,7 +2134,25 @@ function FriendGraphPage({
                           </select>
                         </label>
                         <button className="primary" type="button" onClick={() => void explainFriendPath()}>Explain shortest path</button>
-                        {moviePath ? <strong>{moviePath.movies.map((movie) => movie.title).join(" -> ")}</strong> : null}
+                        {moviePath ? (
+                          <div className="path-card">
+                            <strong>{moviePath.movies.map((movie) => movie.title).join(" -> ")}</strong>
+                            <div className="list dense-list">
+                              {moviePath.connections.map((connection, index) => (
+                                <button
+                                  key={`friend-path-connection-${connection.id}`}
+                                  className="picker-result"
+                                  type="button"
+                                  onClick={() => setSelectedConnectionId(connection.id)}
+                                >
+                                  <strong>{`${moviePath.movies[index]?.title} -> ${moviePath.movies[index + 1]?.title}`}</strong>
+                                  <span>{formatConnectionCategory(connection.category)} / weight {connection.weight}</span>
+                                  <span>{connection.reason}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </section>
                   </div>
@@ -1562,7 +2223,7 @@ function SharedGraphPage({ authenticatedUsername }: { authenticatedUsername: str
           {graph ? (
             <div className="graph-inspector-grid">
               <div className="graph-frame-stack">
-                <ConnectionGraph
+                <GraphCanvas
                   movie={graph.graph.movie}
                   connections={graph.graph.connections}
                   selectedMovieId={selectedMovieId}
@@ -1637,19 +2298,40 @@ function VerifyPage() {
 function ResetPasswordPage() {
   const [status, setStatus] = useState("");
   const [password, setPassword] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<ResetFieldErrors>({});
+  const [formError, setFormError] = useState("");
+  const token = new URLSearchParams(window.location.search).get("token") ?? "";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const token = new URLSearchParams(window.location.search).get("token");
+    setFieldErrors({});
+    setFormError("");
     if (!token) {
-      setStatus("Missing reset token");
+      const message = "Missing reset token";
+      setFieldErrors({ token: message });
+      setFormError(message);
+      setStatus(message);
       return;
     }
     try {
       await api.resetPassword({ token, newPassword: password });
       setStatus("Password reset. Return to login.");
+      setFormError("");
     } catch (error) {
-      setStatus((error as Error).message);
+      const nextFieldErrors = parseFieldErrors<ResetFieldErrors>(error, ["token", "newPassword"]);
+      if (nextFieldErrors) {
+        setFieldErrors(nextFieldErrors);
+        const message = nextFieldErrors.token || nextFieldErrors.newPassword || (error as Error).message;
+        setFormError(message);
+        setStatus(message);
+        return;
+      }
+      const message = (error as Error).message;
+      if (message.toLowerCase().includes("token")) {
+        setFieldErrors({ token: message });
+      }
+      setFormError(message);
+      setStatus(message);
     }
   }
 
@@ -1658,11 +2340,23 @@ function ResetPasswordPage() {
       <section className="auth-card">
         <h1>Reset password</h1>
         <form className="stack" onSubmit={handleSubmit}>
+          {fieldErrors.token ? <p className="auth-error" role="alert">{fieldErrors.token}</p> : null}
           <label>
             <span>New password</span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                if (fieldErrors.newPassword) {
+                  setFieldErrors((current) => ({ ...current, newPassword: undefined }));
+                }
+              }}
+            />
+            {fieldErrors.newPassword ? <small className="field-error">{fieldErrors.newPassword}</small> : <small className="field-hint">Use at least 8 characters.</small>}
           </label>
           <button className="primary" type="submit">Reset</button>
+          {formError && !fieldErrors.token ? <p className="auth-error" role="alert">{formError}</p> : null}
         </form>
         {status && <p className="status">{status}</p>}
       </section>
@@ -1670,12 +2364,23 @@ function ResetPasswordPage() {
   );
 }
 
+function formatTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
 function readPathname(): AppPath {
   const pathname = window.location.pathname;
   if (pathname.startsWith("/shared/")) {
     return "/shared";
   }
-  if (pathname === "/explore" || pathname === "/connections" || pathname === "/network" || pathname === "/friend" || pathname === "/verify" || pathname === "/reset-password") {
+  if (pathname === "/explore" || pathname === "/connections" || pathname === "/network" || pathname === "/global-graphs" || pathname === "/friend" || pathname === "/verify" || pathname === "/reset-password") {
     return pathname;
   }
   return "/";

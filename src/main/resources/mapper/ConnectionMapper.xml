@@ -37,6 +37,11 @@
             <result property="castMembers" column="to_cast_members"/>
             <result property="directorNotes" column="to_director_notes"/>
         </association>
+        <association property="user" javaType="com.archipelago.model.User">
+            <id property="id" column="owner_user_id"/>
+            <result property="username" column="owner_username"/>
+            <result property="email" column="owner_email"/>
+        </association>
     </resultMap>
 
     <sql id="ConnectionSelect">
@@ -68,16 +73,29 @@
             tm.genres AS to_genres,
             tm.runtime_minutes AS to_runtime_minutes,
             tm.cast_members AS to_cast_members,
-            tm.director_notes AS to_director_notes
+            tm.director_notes AS to_director_notes,
+            owner.id AS owner_user_id,
+            owner.username AS owner_username,
+            owner.email AS owner_email
         FROM connections c
         JOIN movies fm ON fm.id = c.from_movie_id
         JOIN movies tm ON tm.id = c.to_movie_id
+        JOIN users owner ON owner.id = c.user_id
     </sql>
 
     <select id="findByUserId" resultMap="ConnectionResultMap">
         <include refid="ConnectionSelect"/>
         WHERE c.user_id = #{userId}
         ORDER BY c.update_time DESC, c.id DESC
+    </select>
+
+    <select id="findByUserIds" resultMap="ConnectionResultMap">
+        <include refid="ConnectionSelect"/>
+        WHERE c.user_id IN
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+            #{userId}
+        </foreach>
+        ORDER BY c.user_id ASC, c.update_time DESC, c.id DESC
     </select>
 
     <select id="findByUserIdAndMovieId" resultMap="ConnectionResultMap">

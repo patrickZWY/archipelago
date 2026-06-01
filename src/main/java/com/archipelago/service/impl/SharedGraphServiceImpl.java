@@ -2,6 +2,7 @@ package com.archipelago.service.impl;
 
 import com.archipelago.dto.request.CreateSharedGraphExportRequest;
 import com.archipelago.dto.response.SharedGraphExportResponse;
+import com.archipelago.dto.response.SharedGraphExportSummaryResponse;
 import com.archipelago.dto.response.SharedGraphResponse;
 import com.archipelago.exception.ResourceNotFoundException;
 import com.archipelago.mapper.MovieMapper;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -51,11 +53,35 @@ public class SharedGraphServiceImpl implements SharedGraphService {
     }
 
     @Override
+    public List<SharedGraphExportSummaryResponse> listExports() {
+        Long currentUserId = currentUserProvider.getCurrentUser().getId();
+        return sharedGraphExportMapper.findByOwnerUserId(currentUserId).stream()
+                .map(export -> new SharedGraphExportSummaryResponse(
+                        export.getShareToken(),
+                        frontendBaseUrl + "/shared/" + export.getShareToken(),
+                        export.getTitle(),
+                        export.getRootMovieId(),
+                        movieMapper.findById(export.getRootMovieId())
+                                .map(Movie::getTitle)
+                                .orElse("Unknown movie"),
+                        export.getCreationTime()
+                ))
+                .toList();
+    }
+
+    @Override
+    public void revokeExport(String shareToken) {
+        Long currentUserId = currentUserProvider.getCurrentUser().getId();
+        int deleted = sharedGraphExportMapper.deleteByShareTokenAndOwnerUserId(shareToken, currentUserId);
+        if (deleted == 0) {
+            throw new ResourceNotFoundException("Shared graph not found");
+        }
+    }
+
+    @Override
     public SharedGraphResponse getSharedGraph(String shareToken) {
         SharedGraphExport export = sharedGraphExportMapper.findByShareToken(shareToken)
                 .orElseThrow(() -> new ResourceNotFoundException("Shared graph not found"));
-        Movie rootMovie = movieMapper.findById(export.getRootMovieId())
-                .orElseThrow(() -> new ResourceNotFoundException("Movie not found"));
         return new SharedGraphResponse(
                 export.getShareToken(),
                 export.getTitle(),

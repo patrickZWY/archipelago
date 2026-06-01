@@ -2,6 +2,7 @@ package com.archipelago.controller;
 
 import com.archipelago.dto.request.CreateSharedGraphExportRequest;
 import com.archipelago.dto.response.SharedGraphExportResponse;
+import com.archipelago.dto.response.SharedGraphExportSummaryResponse;
 import com.archipelago.dto.response.SharedGraphResponse;
 import com.archipelago.service.SharedGraphService;
 import com.archipelago.util.ApiResponse;
@@ -12,9 +13,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/shares")
@@ -29,6 +33,17 @@ public class SharedGraphController {
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(sharedGraphService.createExport(request), "Shared graph created"));
+    }
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<SharedGraphExportSummaryResponse>>> listShares() {
+        return ResponseEntity.ok(ApiResponse.success(sharedGraphService.listExports(), "Shared graphs retrieved"));
+    }
+
+    @DeleteMapping("/{shareToken}")
+    public ResponseEntity<ApiResponse<Void>> revokeShare(@PathVariable String shareToken) {
+        sharedGraphService.revokeExport(shareToken);
+        return ResponseEntity.ok(ApiResponse.success("Shared graph revoked"));
     }
 
     @GetMapping("/{shareToken}")

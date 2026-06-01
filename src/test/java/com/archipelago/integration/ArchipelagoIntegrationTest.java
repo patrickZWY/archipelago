@@ -16,6 +16,9 @@ import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -189,6 +192,63 @@ class ArchipelagoIntegrationTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.authenticated").value(true));
+    }
+
+    @Test
+    void forgotAndResetPasswordValidationAndTokenErrorsStayConsistent() throws Exception {
+        CsrfContext csrf = fetchCsrf(null);
+
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"bad-email"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.data.email").value("Email must be valid"));
+
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"token":"missing-token","newPassword":"newsecret123"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Invalid reset token"));
+
+        registerUser("expired@example.com", "secret123", "expired-user", fetchCsrf(null));
+        csrf = fetchCsrf(null);
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"expired@example.com"}
+                                """))
+                .andExpect(status().isOk());
+
+        User expiredUser = userMapper.findActiveByEmail("expired@example.com").orElseThrow();
+        jdbcTemplate.update(
+                "UPDATE users SET password_reset_token_expire_time = ? WHERE id = ?",
+                Timestamp.valueOf(LocalDateTime.now().minusMinutes(1)),
+                expiredUser.getId()
+        );
+
+        csrf = fetchCsrf(null);
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ResetPasswordPayload(expiredUser.getPasswordResetToken(), "newsecret123"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Reset token has expired"));
     }
 
     @Test
@@ -442,6 +502,92 @@ class ArchipelagoIntegrationTest {
     }
 
     @Test
+    void shareLifecycleListsOwnerSharesAndRevocationInvalidatesPublicAccess() throws Exception {
+        MockHttpSession ownerSession = registerUser("share-owner@example.com", "secret123", "share-owner", fetchCsrf(null));
+        MockHttpSession otherSession = registerUser("share-other@example.com", "secret123", "share-other", fetchCsrf(null));
+
+        CsrfContext ownerCsrf = fetchCsrf(ownerSession);
+        mockMvc.perform(post("/api/connections")
+                        .session(ownerCsrf.session())
+                        .cookie(ownerCsrf.cookie())
+                        .header(ownerCsrf.headerName(), ownerCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromMovieId":1,"toMovieId":2,"reason":"Shared dream logic","weight":1.1,"category":"theme"}
+                                """))
+                .andExpect(status().isCreated());
+
+        ownerCsrf = fetchCsrf(ownerSession);
+        MvcResult firstShareResult = mockMvc.perform(post("/api/shares")
+                        .session(ownerCsrf.session())
+                        .cookie(ownerCsrf.cookie())
+                        .header(ownerCsrf.headerName(), ownerCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"movieId":1,"title":"Owner share"}
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String firstShareToken = objectMapper.readTree(firstShareResult.getResponse().getContentAsString())
+                .path("data").path("shareToken").asText();
+
+        ownerCsrf = fetchCsrf(ownerSession);
+        mockMvc.perform(post("/api/shares")
+                        .session(ownerCsrf.session())
+                        .cookie(ownerCsrf.cookie())
+                        .header(ownerCsrf.headerName(), ownerCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"movieId":2,"title":"Second owner share"}
+                                """))
+                .andExpect(status().isCreated());
+
+        CsrfContext otherCsrf = fetchCsrf(otherSession);
+        mockMvc.perform(post("/api/shares")
+                        .session(otherCsrf.session())
+                        .cookie(otherCsrf.cookie())
+                        .header(otherCsrf.headerName(), otherCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"movieId":3,"title":"Other share"}
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/shares").session(ownerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].title").value("Second owner share"))
+                .andExpect(jsonPath("$.data[0].rootMovieTitle").value("Interstellar"))
+                .andExpect(jsonPath("$.data[1].title").value("Owner share"))
+                .andExpect(jsonPath("$.data[1].rootMovieTitle").value("Inception"));
+
+        otherCsrf = fetchCsrf(otherSession);
+        mockMvc.perform(delete("/api/shares/{shareToken}", firstShareToken)
+                        .session(otherCsrf.session())
+                        .cookie(otherCsrf.cookie())
+                        .header(otherCsrf.headerName(), otherCsrf.token()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Shared graph not found"));
+
+        ownerCsrf = fetchCsrf(ownerSession);
+        mockMvc.perform(delete("/api/shares/{shareToken}", firstShareToken)
+                        .session(ownerCsrf.session())
+                        .cookie(ownerCsrf.cookie())
+                        .header(ownerCsrf.headerName(), ownerCsrf.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Shared graph revoked"));
+
+        mockMvc.perform(get("/api/shares/{shareToken}", firstShareToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Shared graph not found"));
+
+        mockMvc.perform(get("/api/shares").session(ownerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].title").value("Second owner share"));
+    }
+
+    @Test
     void demoSessionIncludesSeededFriendNetwork() throws Exception {
         CsrfContext csrf = fetchCsrf(null);
         MvcResult demoResult = mockMvc.perform(post("/api/auth/demo")
@@ -587,6 +733,172 @@ class ArchipelagoIntegrationTest {
 
         mockMvc.perform(get("/api/friends/{friendUserId}/profile", user1Id).session(user2Session))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void globalGraphWorkspaceEndpointsReturnFullScopesAndMergedFriendProvenance() throws Exception {
+        MockHttpSession viewerSession = registerUser("global-viewer@example.com", "secret123", "global-viewer", fetchCsrf(null));
+        MockHttpSession friendOneSession = registerUser("global-friend1@example.com", "secret123", "global-friend-one", fetchCsrf(null));
+        MockHttpSession friendTwoSession = registerUser("global-friend2@example.com", "secret123", "global-friend-two", fetchCsrf(null));
+
+        long friendOneUserId = userMapper.findActiveByEmail("global-friend1@example.com").orElseThrow().getId();
+        long friendTwoUserId = userMapper.findActiveByEmail("global-friend2@example.com").orElseThrow().getId();
+
+        CsrfContext viewerCsrf = fetchCsrf(viewerSession);
+        mockMvc.perform(post("/api/connections")
+                        .session(viewerCsrf.session())
+                        .cookie(viewerCsrf.cookie())
+                        .header(viewerCsrf.headerName(), viewerCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromMovieId":1,"toMovieId":2,"reason":"Viewer component one","weight":1.2,"category":"theme"}
+                                """))
+                .andExpect(status().isCreated());
+
+        viewerCsrf = fetchCsrf(viewerSession);
+        mockMvc.perform(post("/api/connections")
+                        .session(viewerCsrf.session())
+                        .cookie(viewerCsrf.cookie())
+                        .header(viewerCsrf.headerName(), viewerCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromMovieId":4,"toMovieId":5,"reason":"Viewer component two","weight":1.8,"category":"structure"}
+                                """))
+                .andExpect(status().isCreated());
+
+        CsrfContext friendOneCsrf = fetchCsrf(friendOneSession);
+        mockMvc.perform(post("/api/connections")
+                        .session(friendOneCsrf.session())
+                        .cookie(friendOneCsrf.cookie())
+                        .header(friendOneCsrf.headerName(), friendOneCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromMovieId":1,"toMovieId":2,"reason":"Friend one overlap","weight":1.1,"category":"theme"}
+                                """))
+                .andExpect(status().isCreated());
+
+        friendOneCsrf = fetchCsrf(friendOneSession);
+        mockMvc.perform(post("/api/connections")
+                        .session(friendOneCsrf.session())
+                        .cookie(friendOneCsrf.cookie())
+                        .header(friendOneCsrf.headerName(), friendOneCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromMovieId":2,"toMovieId":3,"reason":"Friend one bridge","weight":1.3,"category":"structure"}
+                                """))
+                .andExpect(status().isCreated());
+
+        CsrfContext friendTwoCsrf = fetchCsrf(friendTwoSession);
+        mockMvc.perform(post("/api/connections")
+                        .session(friendTwoCsrf.session())
+                        .cookie(friendTwoCsrf.cookie())
+                        .header(friendTwoCsrf.headerName(), friendTwoCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromMovieId":2,"toMovieId":1,"reason":"Friend two overlap","weight":2.4,"category":"director"}
+                                """))
+                .andExpect(status().isCreated());
+
+        friendTwoCsrf = fetchCsrf(friendTwoSession);
+        mockMvc.perform(post("/api/connections")
+                        .session(friendTwoCsrf.session())
+                        .cookie(friendTwoCsrf.cookie())
+                        .header(friendTwoCsrf.headerName(), friendTwoCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromMovieId":3,"toMovieId":6,"reason":"Friend two extension","weight":1.6,"category":"theme"}
+                                """))
+                .andExpect(status().isCreated());
+
+        viewerCsrf = fetchCsrf(viewerSession);
+        MvcResult firstFriendRequest = mockMvc.perform(post("/api/friends/requests")
+                        .session(viewerCsrf.session())
+                        .cookie(viewerCsrf.cookie())
+                        .header(viewerCsrf.headerName(), viewerCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"recipientUserId":%d}
+                                """.formatted(friendOneUserId)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long firstRequestId = objectMapper.readTree(firstFriendRequest.getResponse().getContentAsString())
+                .path("data").path("id").asLong();
+
+        friendOneCsrf = fetchCsrf(friendOneSession);
+        mockMvc.perform(post("/api/friends/requests/{id}/accept", firstRequestId)
+                        .session(friendOneCsrf.session())
+                        .cookie(friendOneCsrf.cookie())
+                        .header(friendOneCsrf.headerName(), friendOneCsrf.token()))
+                .andExpect(status().isOk());
+
+        viewerCsrf = fetchCsrf(viewerSession);
+        MvcResult secondFriendRequest = mockMvc.perform(post("/api/friends/requests")
+                        .session(viewerCsrf.session())
+                        .cookie(viewerCsrf.cookie())
+                        .header(viewerCsrf.headerName(), viewerCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"recipientUserId":%d}
+                                """.formatted(friendTwoUserId)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long secondRequestId = objectMapper.readTree(secondFriendRequest.getResponse().getContentAsString())
+                .path("data").path("id").asLong();
+
+        friendTwoCsrf = fetchCsrf(friendTwoSession);
+        mockMvc.perform(post("/api/friends/requests/{id}/accept", secondRequestId)
+                        .session(friendTwoCsrf.session())
+                        .cookie(friendTwoCsrf.cookie())
+                        .header(friendTwoCsrf.headerName(), friendTwoCsrf.token()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/global-graphs/me").session(viewerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.movies.length()").value(4))
+                .andExpect(jsonPath("$.data.connections.length()").value(2));
+
+        mockMvc.perform(get("/api/global-graphs/friends").session(viewerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
+
+        mockMvc.perform(get("/api/global-graphs/friends/{friendUserId}", friendOneUserId).session(viewerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.movies.length()").value(3))
+                .andExpect(jsonPath("$.data.connections.length()").value(2));
+
+        MvcResult aggregateResult = mockMvc.perform(get("/api/global-graphs/friends/aggregate").session(viewerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.movies.length()").value(6))
+                .andExpect(jsonPath("$.data.connections.length()").value(4))
+                .andReturn();
+
+        JsonNode aggregateConnections = objectMapper.readTree(aggregateResult.getResponse().getContentAsString())
+                .path("data").path("connections");
+        JsonNode mergedConnection = null;
+        for (JsonNode connection : aggregateConnections) {
+            if (connection.path("fromMovieId").asLong() == 1L && connection.path("toMovieId").asLong() == 2L) {
+                mergedConnection = connection;
+                break;
+            }
+        }
+        assertThat(mergedConnection).isNotNull();
+        assertThat(mergedConnection.path("aggregate").asBoolean()).isTrue();
+        assertThat(mergedConnection.path("contributorCount").asInt()).isEqualTo(3);
+        assertThat(mergedConnection.path("weight").asDouble()).isEqualTo(2.4);
+        assertThat(mergedConnection.path("category").asText()).isEqualTo("theme");
+        assertThat(mergedConnection.path("reason").asText()).isEqualTo("Merged from 3 graphs");
+        assertThat(mergedConnection.path("contributors").get(0).path("username").asText()).isEqualTo("global-friend-one");
+        assertThat(mergedConnection.path("contributors").get(1).path("username").asText()).isEqualTo("global-friend-two");
+        assertThat(mergedConnection.path("contributors").get(2).path("username").asText()).isEqualTo("global-viewer");
+
+        mockMvc.perform(get("/api/global-graphs/path?scope=all-friends&from=1&to=6").session(viewerSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.movies.length()").value(4))
+                .andExpect(jsonPath("$.data.connections.length()").value(3));
+
+        mockMvc.perform(get("/api/global-graphs/path?scope=all-friends&from=1&to=5").session(viewerSession))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("These movies are not connected in the merged friend graph"));
     }
 
     @Test

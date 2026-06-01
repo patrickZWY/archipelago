@@ -11,6 +11,8 @@ import java.util.Optional;
 public interface ConnectionMapper {
     List<Connection> findByUserId(@Param("userId") Long userId);
 
+    List<Connection> findByUserIds(@Param("userIds") List<Long> userIds);
+
     List<Connection> findByUserIdAndMovieId(@Param("userId") Long userId, @Param("movieId") Long movieId);
 
     void insert(Connection connection);

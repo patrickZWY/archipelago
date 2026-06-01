@@ -88,7 +88,7 @@ describe("buildGraphElements", () => {
     });
   });
 
-  it("uses a preset constellation layout for graphs with more than two nodes", () => {
+  it("uses a force-directed layout for graphs with more than two nodes", () => {
     const layout = buildGraphLayout(
       movie,
       [
@@ -115,13 +115,15 @@ describe("buildGraphElements", () => {
       ],
     );
 
-    expect(layout?.name).toBe("preset");
-    const presetLayout = layout as { positions: Record<string, { x: number; y: number }> };
-    expect(presetLayout.positions["movie-1"]).toEqual({ x: 0, y: 0 });
-    expect(presetLayout.positions["movie-2"]).not.toEqual({ x: 0, y: -300 });
+    expect(layout?.name).toBe("cose");
+    expect(layout).toMatchObject({
+      animate: false,
+      fit: true,
+      randomize: false,
+    });
   });
 
-  it("spreads disconnected filtered components into separate regions", () => {
+  it("keeps force-directed component spacing enabled for disconnected graphs", () => {
     const layout = buildGraphLayout(
       movie,
       [
@@ -148,11 +150,10 @@ describe("buildGraphElements", () => {
       ],
     );
 
-    expect(layout?.name).toBe("preset");
-    const presetLayout = layout as { positions: Record<string, { x: number; y: number }> };
-    expect(presetLayout.positions["movie-1"]).toEqual({ x: 0, y: 0 });
-    expect(presetLayout.positions["movie-2"]).toBeDefined();
-    expect(presetLayout.positions["movie-5"]).toBeDefined();
-    expect(presetLayout.positions["movie-2"].x).not.toBe(presetLayout.positions["movie-5"].x);
+    expect(layout?.name).toBe("cose");
+    expect(layout).toMatchObject({
+      componentSpacing: 180,
+      idealEdgeLength: 130,
+    });
   });
 });

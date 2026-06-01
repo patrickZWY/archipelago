@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ConnectionGraph } from "../components/ConnectionGraph";
 
 const movie = {
@@ -17,51 +17,16 @@ const movie = {
   directorNotes: null,
 };
 
-const cytoscapeTestState = vi.hoisted(() => {
-  const zoomMock = vi.fn();
-  const fitMock = vi.fn();
-  const centerMock = vi.fn();
-  const destroyMock = vi.fn();
-  const layoutRunMock = vi.fn();
-  const layoutMock = vi.fn(() => ({ run: layoutRunMock }));
-  const makeCollectionEntry = () => ({ data: vi.fn() });
-  const cytoscapeMock = vi.fn(() => ({
-    nodes: () => [makeCollectionEntry(), makeCollectionEntry(), makeCollectionEntry()],
-    edges: () => [],
-    on: vi.fn(),
-    $id: vi.fn(() => ({ data: vi.fn() })),
-    layout: layoutMock,
-    fit: fitMock,
-    center: centerMock,
-    zoom: zoomMock,
-    destroy: destroyMock,
-    extent: () => ({ x1: 0, x2: 100, y1: 0, y2: 100 }),
-  }));
-
-  return {
-    zoomMock,
-    fitMock,
-    centerMock,
-    destroyMock,
-    layoutRunMock,
-    layoutMock,
-    cytoscapeMock,
-  };
-});
-
-vi.mock("cytoscape", () => ({
-  default: cytoscapeTestState.cytoscapeMock,
-}));
-
 describe("ConnectionGraph", () => {
-  it("renders a zoom slider and disables wheel zoom", () => {
-    cytoscapeTestState.zoomMock.mockReset();
-    cytoscapeTestState.zoomMock.mockReturnValue(1);
-    cytoscapeTestState.cytoscapeMock.mockClear();
-
+  it("renders an interactive svg graph surface", () => {
     render(
       <ConnectionGraph
         movie={movie}
+        movies={[
+          movie,
+          { ...movie, id: 2, title: "Interstellar" },
+          { ...movie, id: 3, title: "Memento" },
+        ]}
         connections={[
           {
             id: 1,
@@ -88,15 +53,10 @@ describe("ConnectionGraph", () => {
     );
 
     expect(screen.getByLabelText("Graph zoom")).toBeInTheDocument();
-    expect(cytoscapeTestState.cytoscapeMock).toHaveBeenCalledWith(expect.objectContaining({
-      userZoomingEnabled: false,
-    }));
+    expect(screen.getByLabelText("Connection graph")).toBeInTheDocument();
   });
 
-  it("updates graph zoom from the slider", () => {
-    cytoscapeTestState.zoomMock.mockReset();
-    cytoscapeTestState.zoomMock.mockImplementation((arg?: unknown) => (arg === undefined ? 1 : undefined));
-
+  it("updates the visible zoom label from the slider", () => {
     render(
       <ConnectionGraph
         movie={movie}
@@ -111,24 +71,58 @@ describe("ConnectionGraph", () => {
             weight: 2,
             category: "director",
           },
-          {
-            id: 2,
-            fromMovieId: 2,
-            fromMovieTitle: "Interstellar",
-            toMovieId: 3,
-            toMovieTitle: "Memento",
-            reason: "Memory and time",
-            weight: 1.2,
-            category: "structure",
-          },
         ]}
       />,
     );
 
     fireEvent.change(screen.getByLabelText("Graph zoom"), { target: { value: "1.4" } });
 
-    expect(cytoscapeTestState.zoomMock).toHaveBeenCalledWith(expect.objectContaining({
-      level: 1.4,
-    }));
+    expect(screen.getByText("140%")).toBeInTheDocument();
+  });
+
+  it("preserves zoom across rerenders", () => {
+    const { rerender } = render(
+      <ConnectionGraph
+        movie={movie}
+        movies={[movie, { ...movie, id: 2, title: "Interstellar" }]}
+        connections={[
+          {
+            id: 1,
+            fromMovieId: 1,
+            fromMovieTitle: "Inception",
+            toMovieId: 2,
+            toMovieTitle: "Interstellar",
+            reason: "Shared Nolan themes",
+            weight: 2,
+            category: "director",
+          },
+        ]}
+        selectedMovieId={1}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Graph zoom"), { target: { value: "1.4" } });
+
+    rerender(
+      <ConnectionGraph
+        movie={movie}
+        movies={[movie, { ...movie, id: 2, title: "Interstellar" }]}
+        connections={[
+          {
+            id: 1,
+            fromMovieId: 1,
+            fromMovieTitle: "Inception",
+            toMovieId: 2,
+            toMovieTitle: "Interstellar",
+            reason: "Shared Nolan themes",
+            weight: 2,
+            category: "director",
+          },
+        ]}
+        selectedMovieId={2}
+      />,
+    );
+
+    expect(screen.getByText("140%")).toBeInTheDocument();
   });
 });

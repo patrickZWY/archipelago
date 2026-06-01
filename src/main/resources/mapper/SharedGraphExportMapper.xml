@@ -32,4 +32,16 @@
     <select id="findByShareToken" resultMap="SharedGraphExportResultMap">
         SELECT * FROM shared_graph_exports WHERE share_token = #{shareToken}
     </select>
+
+    <select id="findByOwnerUserId" resultMap="SharedGraphExportResultMap">
+        SELECT * FROM shared_graph_exports
+        WHERE owner_user_id = #{ownerUserId}
+        ORDER BY creation_time DESC, id DESC
+    </select>
+
+    <delete id="deleteByShareTokenAndOwnerUserId">
+        DELETE FROM shared_graph_exports
+        WHERE share_token = #{shareToken}
+          AND owner_user_id = #{ownerUserId}
+    </delete>
 </mapper>
