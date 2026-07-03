@@ -135,6 +135,45 @@ npm test
 npm run build
 ```
 
+## By-Request Demo
+
+The demo frontdoor is `https://archipelago-demo.zhengwangyuan-patrick.com/`.
+It proxies to the live tunnel at
+`https://live-archipelago-demo.zhengwangyuan-patrick.com/` while the local app
+is running, and returns the personal site's Worker offline page otherwise.
+
+Run the single-origin demo locally:
+
+```bash
+scripts/run-demo.sh
+```
+
+The script builds `frontend/dist`, serves it from Spring Boot with the `demo`
+profile, binds the app to `127.0.0.1:8080`, sets
+`ARCHIPELAGO_FRONTEND_BASE_URL` to the public frontdoor URL, enables secure
+session cookies, and leaves outbound mail disabled unless
+`ARCHIPELAGO_MAIL_ENABLED` is already set.
+
+Run the named tunnel in a second shell:
+
+```bash
+scripts/run-demo-tunnel.sh
+```
+
+Default tunnel settings:
+
+- Tunnel name: `archipelago-demo`
+- Live hostname: `live-archipelago-demo.zhengwangyuan-patrick.com`
+- Local service: `http://127.0.0.1:8080`
+
+Configure the Cloudflare tunnel public hostname to point
+`live-archipelago-demo.zhengwangyuan-patrick.com` at
+`http://127.0.0.1:8080`. Without Cloudflare Access this demo is public while
+the local app and tunnel are running, so stop the app or tunnel when the demo is
+not intentionally live.
+
+For exact local and online run steps, see [docs/demo-runbook.md](docs/demo-runbook.md).
+
 ## Backlog
 
 Open [future.md](/Users/zhengwangyuan/repos/archipelago/future.md) for the current follow-up list.

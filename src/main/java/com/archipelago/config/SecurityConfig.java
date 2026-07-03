@@ -32,6 +32,25 @@ import java.util.function.Supplier;
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
+    private static final String[] SPA_ROUTES = {
+            "/",
+            "/index.html",
+            "/explore",
+            "/connections",
+            "/network",
+            "/global-graphs",
+            "/friend",
+            "/shared/**",
+            "/verify",
+            "/reset-password"
+    };
+
+    private static final String[] STATIC_ASSET_ROUTES = {
+            "/assets/**",
+            "/favicon.ico",
+            "/favicon.svg",
+            "/robots.txt"
+    };
 
     private final ObjectMapper objectMapper;
     private final String frontendBaseUrl;
@@ -55,6 +74,10 @@ public class SecurityConfig {
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET, SPA_ROUTES).permitAll()
+                        .requestMatchers(HttpMethod.HEAD, SPA_ROUTES).permitAll()
+                        .requestMatchers(HttpMethod.GET, STATIC_ASSET_ROUTES).permitAll()
+                        .requestMatchers(HttpMethod.HEAD, STATIC_ASSET_ROUTES).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/session", "/api/auth/verify").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/shares/**").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/logout",

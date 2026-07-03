@@ -21,10 +21,10 @@ type GraphNode = d3.SimulationNodeDatum & {
   focus: boolean;
 };
 
-type GraphLink = d3.SimulationLinkDatum<GraphNode> & {
+type GraphLink = {
   id: number;
-  source: number | GraphNode;
-  target: number | GraphNode;
+  source: string | GraphNode;
+  target: string | GraphNode;
   weight: number;
 };
 
@@ -161,8 +161,8 @@ export function ConnectionGraph({
         .attr("filter", "drop-shadow(0 3px 10px rgba(0, 0, 0, 0.35))");
     });
 
-    const simulation = d3.forceSimulation(graphNodes)
-      .force("link", d3.forceLink(graphLinks).id((datum) => datum.id).distance(layoutConfig.linkDistance).strength(layoutConfig.linkStrength))
+    const simulation = d3.forceSimulation<GraphNode>(graphNodes)
+      .force("link", d3.forceLink<GraphNode, GraphLink>(graphLinks).id((datum) => String(datum.id)).distance(layoutConfig.linkDistance).strength(layoutConfig.linkStrength))
       .force("charge", d3.forceManyBody().strength(layoutConfig.chargeStrength))
       .force("center", d3.forceCenter(width / 2, height / 2))
       .force("x", d3.forceX(width / 2).strength(layoutConfig.centeringStrength))
@@ -242,22 +242,26 @@ export function ConnectionGraph({
   useEffect(() => {
     const container = containerRef.current;
     const simulation = simulationRef.current;
-    if (!container || !simulation) {
+    const svgElement = svgRef.current;
+    if (!container || !simulation || !svgElement) {
       return;
     }
+    const graphContainer = container;
+    const graphSimulation = simulation;
+    const graphSvg = svgElement;
 
     function handleResize() {
-      const { width, height } = readViewport(container);
-      const svgSelection = d3.select(svgRef.current);
+      const { width, height } = readViewport(graphContainer);
+      const svgSelection = d3.select(graphSvg);
       svgSelection.attr("viewBox", `0 0 ${width} ${height}`);
       zoomBehaviorRef.current?.extent([[0, 0], [width, height]]);
       if (zoomBehaviorRef.current) {
         svgSelection.call(zoomBehaviorRef.current.transform, currentTransformRef.current);
       }
-      simulation.force("center", d3.forceCenter(width / 2, height / 2));
-      simulation.force("x", d3.forceX(width / 2).strength(resolveLayoutConfig(layoutMode, movies.length || 0, connections.length).centeringStrength));
-      simulation.force("y", d3.forceY(height / 2).strength(resolveLayoutConfig(layoutMode, movies.length || 0, connections.length).centeringStrength));
-      simulation.alpha(0.3).restart();
+      graphSimulation.force("center", d3.forceCenter(width / 2, height / 2));
+      graphSimulation.force("x", d3.forceX(width / 2).strength(resolveLayoutConfig(layoutMode, movies.length || 0, connections.length).centeringStrength));
+      graphSimulation.force("y", d3.forceY(height / 2).strength(resolveLayoutConfig(layoutMode, movies.length || 0, connections.length).centeringStrength));
+      graphSimulation.alpha(0.3).restart();
     }
 
     window.addEventListener("resize", handleResize);
@@ -359,11 +363,11 @@ function buildGraphNodes(
   return [...nodes.values()];
 }
 
-function buildGraphLinks(connections: Connection[]) {
+function buildGraphLinks(connections: Connection[]): GraphLink[] {
   return connections.map((connection) => ({
     id: connection.id,
-    source: connection.fromMovieId,
-    target: connection.toMovieId,
+    source: String(connection.fromMovieId),
+    target: String(connection.toMovieId),
     weight: connection.weight,
   }));
 }
@@ -463,12 +467,12 @@ function resolveLayoutConfig(
   };
 }
 
-function readNodeX(node: number | GraphNode) {
-  return typeof node === "number" ? 0 : node.x ?? 0;
+function readNodeX(node: string | GraphNode) {
+  return typeof node === "string" ? 0 : node.x ?? 0;
 }
 
-function readNodeY(node: number | GraphNode) {
-  return typeof node === "number" ? 0 : node.y ?? 0;
+function readNodeY(node: string | GraphNode) {
+  return typeof node === "string" ? 0 : node.y ?? 0;
 }
 
 function readViewport(container: HTMLDivElement) {

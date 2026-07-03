@@ -24,6 +24,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.forwardedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -102,6 +104,25 @@ class ArchipelagoIntegrationTest {
                                 {"email":"user2@example.com","password":"secret123","username":"user2"}
                                 """))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void spaShellAndStaticAssetsArePublicWithoutChangingApiAuth() throws Exception {
+        mockMvc.perform(get("/explore"))
+                .andExpect(status().isOk())
+                .andExpect(forwardedUrl("/index.html"));
+
+        mockMvc.perform(get("/shared/demo-token"))
+                .andExpect(status().isOk())
+                .andExpect(forwardedUrl("/index.html"));
+
+        mockMvc.perform(get("/assets/test.txt"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("static asset\n"));
+
+        mockMvc.perform(get("/api/connections"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Authentication required"));
     }
 
     @Test

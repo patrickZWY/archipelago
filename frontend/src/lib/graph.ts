@@ -7,17 +7,18 @@ export function buildGraphElements(movie: Movie | null, connections: Connection[
     return [];
   }
 
+  const focusMovieId = movie?.id ?? null;
   const nodes = new Map<number, cytoscape.ElementDefinition>();
   for (const graphMovie of movies) {
-    upsertNode(nodes, graphMovie.id, graphMovie.title, graphMovie.id === movie?.id);
+    upsertNode(nodes, graphMovie.id, graphMovie.title, graphMovie.id === focusMovieId);
   }
   if (movie) {
     upsertNode(nodes, movie.id, movie.title, true);
   }
 
   const edges = connections.map((connection) => {
-    upsertNode(nodes, connection.fromMovieId, connection.fromMovieTitle, connection.fromMovieId === movie.id);
-    upsertNode(nodes, connection.toMovieId, connection.toMovieTitle, connection.toMovieId === movie.id);
+    upsertNode(nodes, connection.fromMovieId, connection.fromMovieTitle, connection.fromMovieId === focusMovieId);
+    upsertNode(nodes, connection.toMovieId, connection.toMovieTitle, connection.toMovieId === focusMovieId);
 
     return {
       data: {
