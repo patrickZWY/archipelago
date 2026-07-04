@@ -174,7 +174,7 @@ describe("App", () => {
     expect(screen.getByText("Password must be between 8 and 128 characters long", { selector: "small" })).toBeInTheDocument();
   });
 
-  it("shows duplicate register errors inline", async () => {
+  it("keeps duplicate register responses neutral", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/auth/session")) {
@@ -189,11 +189,11 @@ describe("App", () => {
       }
       if (url.endsWith("/api/auth/register")) {
         return {
-          ok: false,
+          ok: true,
           json: async () => ({
-            success: false,
-            data: null,
-            message: "Email already exists",
+            success: true,
+            data: { authenticated: false, user: null },
+            message: "Check your email to finish signup",
           }),
         };
       }
@@ -210,7 +210,8 @@ describe("App", () => {
     await userEvent.type(screen.getByLabelText(/Username/i), "helloworld");
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Email already exists");
+    expect(await screen.findByText("Check your email to finish signup")).toBeInTheDocument();
+    expect(screen.queryByText("Explore Movie Graphs")).not.toBeInTheDocument();
   });
 
   it("shows forgot-password field errors inline", async () => {
@@ -326,11 +327,8 @@ describe("App", () => {
           ok: true,
           json: async () => ({
             success: true,
-            data: {
-              authenticated: true,
-              user: { id: 1, email: "helloworld@gmail.com", username: "helloworld" },
-            },
-            message: "Registration successful",
+            data: { authenticated: false, user: null },
+            message: "Check your email to finish signup",
           }),
         };
       }
@@ -347,7 +345,7 @@ describe("App", () => {
     await userEvent.type(screen.getByLabelText(/Username/i), "helloworld");
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
 
-    expect(await screen.findByText("Explore Movie Graphs")).toBeInTheDocument();
+    expect(await screen.findByText("Check your email to finish signup")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/auth/register",
       expect.objectContaining({

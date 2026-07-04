@@ -23,9 +23,9 @@ public interface UserMapper {
 
     Optional<User> findActiveByEmail(@Param("email") String email);
 
-    Optional<User> findByVerificationToken(@Param("token") String token);
+    Optional<User> findByVerificationToken(@Param("tokenHash") String tokenHash);
 
-    Optional<User> findByPasswordResetToken(@Param("token") String token);
+    Optional<User> findByPasswordResetToken(@Param("tokenHash") String tokenHash);
 
     List<User> searchByUsername(@Param("query") String query,
                                 @Param("excludeUserId") Long excludeUserId,

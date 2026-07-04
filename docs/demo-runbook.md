@@ -19,7 +19,8 @@ scripts/run-demo.sh
 
 Keep that terminal open. It builds the Vite frontend, starts Spring Boot on
 `127.0.0.1:8080`, enables secure session cookies, and disables outbound mail
-unless explicitly configured.
+unless explicitly configured. Persistent signup defaults to `approval`; the
+public `Enter demo` flow remains open.
 
 In a second terminal:
 
@@ -55,6 +56,9 @@ In the browser:
 - Refresh `/explore`.
 - Refresh `/global-graphs`.
 - Create and open a share link to verify `/shared/<token>`.
+- Try `Register` with a test address and confirm the app stays unauthenticated
+  with the check-email message. Do not expect persistent accounts to enter the
+  workspace without email verification and approval.
 
 ## Stop the Demo
 
@@ -102,4 +106,19 @@ archipelago-demo.zhengwangyuan-patrick.com/*
 ```
 
 This setup does not require Cloudflare Zero Trust. Without Zero Trust, the demo
-is public while the local app and tunnel are running.
+is public while the local app and tunnel are running. The seeded demo account is
+intentionally public; persistent accounts remain behind email verification and
+signup gating.
+
+## Auth Operations
+
+- Keep `ARCHIPELAGO_SESSION_COOKIE_SECURE=true` for the HTTPS frontdoor. Startup
+  fails if the public base URL is HTTPS and secure cookies are disabled.
+- Use `ARCHIPELAGO_SIGNUP_MODE=approval` for the by-request demo unless a real
+  invite or approval workflow is being operated.
+- If outbound mail is disabled, verification and reset links are logged only for
+  local operation. Do not rely on persistent signup for public evaluators until
+  mail delivery is configured.
+- Review `auth_audit_events` for login, registration, verification, reset,
+  logout, demo-login, and profile-delete outcomes. The table stores hashed IP
+  and user-agent values, not raw request bodies or plaintext tokens.

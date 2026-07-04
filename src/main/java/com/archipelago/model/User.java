@@ -1,5 +1,6 @@
 package com.archipelago.model;
 
+import com.archipelago.model.enums.AccountStatus;
 import com.archipelago.model.enums.Role;
 //import jakarta.persistence.*;
 import jakarta.persistence.OrderBy;
@@ -39,8 +40,12 @@ public class User {
 //    @Column(nullable = false)
     private LocalDateTime updateTime;
 
-//    @Column(nullable = true, unique = true)
-    private String verificationToken;
+    @Builder.Default
+    private AccountStatus accountStatus = AccountStatus.PENDING_VERIFICATION;
+
+    private String verificationTokenHash;
+
+    private LocalDateTime verificationTokenExpireTime;
 
 //    @Column(nullable = false)
     @Builder.Default
@@ -49,9 +54,11 @@ public class User {
     @Builder.Default
     private boolean enabled = true;
 
-    private String passwordResetToken;
+    private String passwordResetTokenHash;
 
     private LocalDateTime passwordResetTokenExpireTime;
+
+    private LocalDateTime sessionRevokedBefore;
 
     @Builder.Default
     private int failedLoginAttempts = 0;
@@ -62,6 +69,7 @@ public class User {
     private boolean deleted = false;
 
 //    @Enumerated(EnumType.STRING)
+    @Builder.Default
     private Role role = Role.USER;
 
 //    @PreUpdate

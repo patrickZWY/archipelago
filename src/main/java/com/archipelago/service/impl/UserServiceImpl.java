@@ -3,6 +3,7 @@ package com.archipelago.service.impl;
 import com.archipelago.dto.request.UpdateProfileRequest;
 import com.archipelago.dto.response.PublicUserResponse;
 import com.archipelago.dto.response.UserProfileResponse;
+import com.archipelago.auth.AuthAuditService;
 import com.archipelago.exception.EmailAlreadyExistsException;
 import com.archipelago.mapper.UserMapper;
 import com.archipelago.model.User;
@@ -22,6 +23,7 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final CurrentUserProvider currentUserProvider;
+    private final AuthAuditService authAuditService;
 
     @Override
     public UserProfileResponse getProfile() {
@@ -60,5 +62,6 @@ public class UserServiceImpl implements UserService {
     public void deleteCurrentUser() {
         User user = currentUserProvider.getCurrentUser();
         userMapper.softDeleteById(user.getId());
+        authAuditService.record("PROFILE_DELETE", "SUCCESS", user);
     }
 }

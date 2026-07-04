@@ -103,6 +103,12 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify({ email }),
     }),
+  resendVerification: (email: string) =>
+    request<void>("/api/auth/resend-verification", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ email }),
+    }),
   resetPassword: (payload: { token: string; newPassword: string }) =>
     request<void>("/api/auth/reset-password", {
       method: "POST",

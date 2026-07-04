@@ -1,8 +1,10 @@
 package com.archipelago.security;
 
+import com.archipelago.exception.InvalidCredentialsException;
 import com.archipelago.exception.UserNotFoundException;
 import com.archipelago.mapper.UserMapper;
 import com.archipelago.model.User;
+import com.archipelago.model.enums.AccountStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -24,7 +26,17 @@ public class CurrentUserProvider {
         if (!(principal instanceof AuthenticatedUser authenticatedUser)) {
             throw new UserNotFoundException("Unexpected session principal");
         }
-        return userMapper.findActiveById(authenticatedUser.getId())
-                .orElseThrow(() -> new UserNotFoundException("Authenticated user no longer exists"));
+        User user = userMapper.findActiveById(authenticatedUser.getId())
+                .orElseThrow(() -> new InvalidCredentialsException("Authentication required"));
+        if (!user.isEnabled() || user.isDeleted() || !user.isVerified() || user.getAccountStatus() != AccountStatus.ACTIVE) {
+            SecurityContextHolder.clearContext();
+            throw new InvalidCredentialsException("Authentication required");
+        }
+        if (user.getSessionRevokedBefore() != null
+                && authenticatedUser.getAuthenticatedAt().isBefore(user.getSessionRevokedBefore())) {
+            SecurityContextHolder.clearContext();
+            throw new InvalidCredentialsException("Authentication required");
+        }
+        return user;
     }
 }

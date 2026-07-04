@@ -256,8 +256,8 @@ function AuthPage({
       if (mode === "register") {
         const data = await api.register(form);
         onSession(data);
-        onOpenWorkspace();
-        setStatus("Session opened");
+        setForm({ email: form.email, password: "", username: form.username });
+        setStatus("Check your email to finish signup");
         return;
       }
       if (mode === "forgot") {
@@ -2289,7 +2289,7 @@ function VerifyPage() {
     }
     void api.verifyAccount(token)
       .then(() => setStatus("Account verified. You can return to login."))
-      .catch((error: Error) => setStatus(error.message));
+      .catch(() => setStatus("This verification link is invalid or expired."));
   }, []);
 
   return <div className="screen shell-center">{status}</div>;

@@ -114,6 +114,7 @@ export type UserProfile = {
   email: string;
   enabled: boolean;
   verified: boolean;
+  accountStatus: "PENDING_VERIFICATION" | "PENDING_APPROVAL" | "ACTIVE" | "DISABLED" | "DELETED";
 };
 
 export type FriendRequest = {

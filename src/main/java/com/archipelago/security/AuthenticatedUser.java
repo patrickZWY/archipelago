@@ -8,6 +8,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
 import java.util.List;
+import java.time.LocalDateTime;
 
 @Getter
 public class AuthenticatedUser implements UserDetails {
@@ -17,6 +18,7 @@ public class AuthenticatedUser implements UserDetails {
     private final String username;
     private final String password;
     private final boolean enabled;
+    private final LocalDateTime authenticatedAt;
     private final Collection<? extends GrantedAuthority> authorities;
 
     private AuthenticatedUser(
@@ -25,6 +27,7 @@ public class AuthenticatedUser implements UserDetails {
             String username,
             String password,
             boolean enabled,
+            LocalDateTime authenticatedAt,
             Collection<? extends GrantedAuthority> authorities
     ) {
         this.id = id;
@@ -32,6 +35,7 @@ public class AuthenticatedUser implements UserDetails {
         this.username = username;
         this.password = password;
         this.enabled = enabled;
+        this.authenticatedAt = authenticatedAt;
         this.authorities = authorities;
     }
 
@@ -42,6 +46,7 @@ public class AuthenticatedUser implements UserDetails {
                 user.getUsername(),
                 user.getPassword(),
                 user.isEnabled(),
+                LocalDateTime.now(),
                 List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))
         );
     }

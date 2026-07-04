@@ -2,6 +2,7 @@ package com.archipelago.integration;
 
 import com.archipelago.mapper.UserMapper;
 import com.archipelago.model.User;
+import com.archipelago.model.enums.AccountStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +17,9 @@ import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
@@ -50,6 +54,7 @@ class ArchipelagoIntegrationTest {
 
     @BeforeEach
     void cleanDatabase() {
+        jdbcTemplate.update("DELETE FROM auth_audit_events");
         jdbcTemplate.update("DELETE FROM shared_graph_exports");
         jdbcTemplate.update(
                 "DELETE FROM friendships " +
@@ -61,7 +66,7 @@ class ArchipelagoIntegrationTest {
     }
 
     @Test
-    void registerSessionLogoutLifecycleWorks() throws Exception {
+    void registrationCreatesPendingAccountWithoutStartingSession() throws Exception {
         CsrfContext csrf = fetchCsrf(null);
 
         MvcResult registerResult = mockMvc.perform(post("/api/auth/register")
@@ -73,7 +78,9 @@ class ArchipelagoIntegrationTest {
                                 {"email":"user1@example.com","password":"secret123","username":"user1"}
                                 """))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.authenticated").value(true))
+                .andExpect(jsonPath("$.data.authenticated").value(false))
+                .andExpect(jsonPath("$.data.user").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Check your email to finish signup"))
                 .andReturn();
 
         MockHttpSession session = (MockHttpSession) registerResult.getRequest().getSession(false);
@@ -81,8 +88,23 @@ class ArchipelagoIntegrationTest {
 
         mockMvc.perform(get("/api/auth/session").session(session))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.authenticated").value(false));
+
+        User user = userMapper.findActiveByEmail("user1@example.com").orElseThrow();
+        assertThat(user.isVerified()).isFalse();
+        assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.PENDING_VERIFICATION);
+        assertThat(user.getVerificationTokenHash()).isNotBlank();
+        assertThat(user.getVerificationTokenExpireTime()).isAfter(LocalDateTime.now());
+    }
+
+    @Test
+    void loginSessionLogoutLifecycleWorksAfterVerification() throws Exception {
+        MockHttpSession session = registerUser("user-login@example.com", "secret123", "user-login", fetchCsrf(null));
+
+        mockMvc.perform(get("/api/auth/session").session(session))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.authenticated").value(true))
-                .andExpect(jsonPath("$.data.user.email").value("user1@example.com"));
+                .andExpect(jsonPath("$.data.user.email").value("user-login@example.com"));
 
         CsrfContext authenticatedCsrf = fetchCsrf(session);
         mockMvc.perform(post("/api/auth/logout")
@@ -94,6 +116,132 @@ class ArchipelagoIntegrationTest {
         mockMvc.perform(get("/api/auth/session"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.authenticated").value(false));
+    }
+
+    @Test
+    void unverifiedUserCannotLogin() throws Exception {
+        CsrfContext csrf = fetchCsrf(null);
+        mockMvc.perform(post("/api/auth/register")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"pending@example.com","password":"secret123","username":"pending-user"}
+                                """))
+                .andExpect(status().isCreated());
+
+        csrf = fetchCsrf(null);
+        mockMvc.perform(post("/api/auth/login")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"pending@example.com","password":"secret123"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Invalid email or password"));
+    }
+
+    @Test
+    void verificationTokenActivatesAccountAndIsSingleUseAndExpiring() throws Exception {
+        registerPendingUser("verify@example.com", "secret123", "verify-user");
+        User user = userMapper.findActiveByEmail("verify@example.com").orElseThrow();
+        String token = "known-verification-token";
+        jdbcTemplate.update(
+                "UPDATE users SET verification_token_hash = ?, verification_token_expire_time = ? WHERE id = ?",
+                tokenHash(token),
+                Timestamp.valueOf(LocalDateTime.now().plusHours(1)),
+                user.getId()
+        );
+
+        mockMvc.perform(get("/api/auth/verify?token={token}", token))
+                .andExpect(status().isOk());
+
+        User verified = userMapper.findActiveByEmail("verify@example.com").orElseThrow();
+        assertThat(verified.isVerified()).isTrue();
+        assertThat(verified.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(verified.getVerificationTokenHash()).isNull();
+
+        mockMvc.perform(get("/api/auth/verify?token={token}", token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Invalid verification token"));
+
+        registerPendingUser("expired-verify@example.com", "secret123", "expired-verify");
+        User expired = userMapper.findActiveByEmail("expired-verify@example.com").orElseThrow();
+        String expiredToken = "expired-verification-token";
+        jdbcTemplate.update(
+                "UPDATE users SET verification_token_hash = ?, verification_token_expire_time = ? WHERE id = ?",
+                tokenHash(expiredToken),
+                Timestamp.valueOf(LocalDateTime.now().minusMinutes(1)),
+                expired.getId()
+        );
+
+        mockMvc.perform(get("/api/auth/verify?token={token}", expiredToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Verification token has expired"));
+    }
+
+    @Test
+    void forgotPasswordRateLimitIsGeneric() throws Exception {
+        for (int i = 0; i < 5; i++) {
+            CsrfContext csrf = fetchCsrf(null);
+            mockMvc.perform(post("/api/auth/forgot-password")
+                            .session(csrf.session())
+                            .cookie(csrf.cookie())
+                            .header(csrf.headerName(), csrf.token())
+                            .header("X-Forwarded-For", "203.0.113.77")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"email":"rate-limit@example.com"}
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.message").value("If the account exists, a reset link has been issued"));
+        }
+
+        CsrfContext csrf = fetchCsrf(null);
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .header("X-Forwarded-For", "203.0.113.77")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"rate-limit@example.com"}
+                                """))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.message").value("Too many attempts. Try again later."));
+    }
+
+    @Test
+    void authActionsWriteAuditEventsWithoutPlaintextRequestData() throws Exception {
+        registerUser("audit@example.com", "secret123", "audit-user", fetchCsrf(null));
+
+        CsrfContext csrf = fetchCsrf(null);
+        mockMvc.perform(post("/api/auth/login")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .header("User-Agent", "AuditTest/1.0")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"audit@example.com","password":"wrongpass"}
+                                """))
+                .andExpect(status().isUnauthorized());
+
+        Integer loginFailures = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM auth_audit_events WHERE event_type = 'LOGIN' AND outcome = 'FAILURE'",
+                Integer.class
+        );
+        assertThat(loginFailures).isNotNull().isGreaterThan(0);
+
+        String ipHash = jdbcTemplate.queryForObject(
+                "SELECT ip_hash FROM auth_audit_events WHERE event_type = 'LOGIN' AND outcome = 'FAILURE' ORDER BY id DESC LIMIT 1",
+                String.class
+        );
+        assertThat(ipHash).isNotBlank();
+        assertThat(ipHash).doesNotContain("127.0.0.1");
     }
 
     @Test
@@ -177,7 +325,7 @@ class ArchipelagoIntegrationTest {
     @Test
     void forgotResetPasswordFlowUpdatesCredentials() throws Exception {
         CsrfContext csrf = fetchCsrf(null);
-        registerUser("reset@example.com", "secret123", "reset-user", csrf);
+        MockHttpSession originalSession = registerUser("reset@example.com", "secret123", "reset-user", csrf);
 
         csrf = fetchCsrf(null);
         mockMvc.perform(post("/api/auth/forgot-password")
@@ -191,7 +339,16 @@ class ArchipelagoIntegrationTest {
                 .andExpect(status().isOk());
 
         User user = userMapper.findActiveByEmail("reset@example.com").orElseThrow();
-        assertThat(user.getPasswordResetToken()).isNotBlank();
+        assertThat(user.getPasswordResetTokenHash()).isNotBlank();
+        assertThat(user.getPasswordResetTokenExpireTime()).isAfter(LocalDateTime.now());
+
+        String resetToken = "known-reset-token";
+        jdbcTemplate.update(
+                "UPDATE users SET password_reset_token_hash = ?, password_reset_token_expire_time = ? WHERE id = ?",
+                tokenHash(resetToken),
+                Timestamp.valueOf(LocalDateTime.now().plusHours(1)),
+                user.getId()
+        );
 
         csrf = fetchCsrf(null);
         mockMvc.perform(post("/api/auth/reset-password")
@@ -199,8 +356,20 @@ class ArchipelagoIntegrationTest {
                         .cookie(csrf.cookie())
                         .header(csrf.headerName(), csrf.token())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ResetPasswordPayload(user.getPasswordResetToken(), "newsecret123"))))
+                        .content(objectMapper.writeValueAsString(new ResetPasswordPayload(resetToken, "newsecret123"))))
                 .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/users/profile").session(originalSession))
+                .andExpect(status().isUnauthorized());
+
+        csrf = fetchCsrf(null);
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ResetPasswordPayload(resetToken, "newsecret123"))))
+                .andExpect(status().isUnauthorized());
 
         csrf = fetchCsrf(null);
         mockMvc.perform(post("/api/auth/login")
@@ -256,7 +425,8 @@ class ArchipelagoIntegrationTest {
 
         User expiredUser = userMapper.findActiveByEmail("expired@example.com").orElseThrow();
         jdbcTemplate.update(
-                "UPDATE users SET password_reset_token_expire_time = ? WHERE id = ?",
+                "UPDATE users SET password_reset_token_hash = ?, password_reset_token_expire_time = ? WHERE id = ?",
+                tokenHash("expired-reset-token"),
                 Timestamp.valueOf(LocalDateTime.now().minusMinutes(1)),
                 expiredUser.getId()
         );
@@ -267,7 +437,7 @@ class ArchipelagoIntegrationTest {
                         .cookie(csrf.cookie())
                         .header(csrf.headerName(), csrf.token())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ResetPasswordPayload(expiredUser.getPasswordResetToken(), "newsecret123"))))
+                        .content(objectMapper.writeValueAsString(new ResetPasswordPayload("expired-reset-token", "newsecret123"))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.message").value("Reset token has expired"));
     }
@@ -989,15 +1159,46 @@ class ArchipelagoIntegrationTest {
     }
 
     private MockHttpSession registerUser(String email, String password, String username, CsrfContext csrf) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/auth/register")
                         .session(csrf.session())
                         .cookie(csrf.cookie())
                         .header(csrf.headerName(), csrf.token())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterPayload(email, password, username))))
                 .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.authenticated").value(false));
+
+        jdbcTemplate.update(
+                "UPDATE users SET verified = TRUE, enabled = TRUE, account_status = 'ACTIVE', " +
+                        "verification_token_hash = NULL, verification_token_expire_time = NULL WHERE LOWER(email) = LOWER(?)",
+                email
+        );
+
+        CsrfContext loginCsrf = fetchCsrf(null);
+        MvcResult result = mockMvc.perform(post("/api/auth/login")
+                        .session(loginCsrf.session())
+                        .cookie(loginCsrf.cookie())
+                        .header(loginCsrf.headerName(), loginCsrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"%s"}
+                                """.formatted(email, password)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.authenticated").value(true))
                 .andReturn();
         return (MockHttpSession) result.getRequest().getSession(false);
+    }
+
+    private void registerPendingUser(String email, String password, String username) throws Exception {
+        CsrfContext csrf = fetchCsrf(null);
+        mockMvc.perform(post("/api/auth/register")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RegisterPayload(email, password, username))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.authenticated").value(false));
     }
 
     private CsrfContext fetchCsrf(MockHttpSession session) throws Exception {
@@ -1021,5 +1222,10 @@ class ArchipelagoIntegrationTest {
     }
 
     private record ResetPasswordPayload(String token, String newPassword) {
+    }
+
+    private String tokenHash(String token) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        return HexFormat.of().formatHex(digest.digest(token.getBytes(StandardCharsets.UTF_8)));
     }
 }

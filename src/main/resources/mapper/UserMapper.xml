@@ -10,11 +10,14 @@
         <result property="username" column="username"/>
         <result property="creationTime" column="creation_time"/>
         <result property="updateTime" column="update_time"/>
-        <result property="verificationToken" column="verification_token"/>
+        <result property="accountStatus" column="account_status"/>
+        <result property="verificationTokenHash" column="verification_token_hash"/>
+        <result property="verificationTokenExpireTime" column="verification_token_expire_time"/>
         <result property="verified" column="verified"/>
         <result property="enabled" column="enabled"/>
-        <result property="passwordResetToken" column="password_reset_token"/>
+        <result property="passwordResetTokenHash" column="password_reset_token_hash"/>
         <result property="passwordResetTokenExpireTime" column="password_reset_token_expire_time"/>
+        <result property="sessionRevokedBefore" column="session_revoked_before"/>
         <result property="failedLoginAttempts" column="failed_login_attempts"/>
         <result property="lockoutTime" column="lockout_time"/>
         <result property="deleted" column="deleted"/>
@@ -27,9 +30,14 @@
             password,
             username,
             role,
+            account_status,
             enabled,
-            verification_token,
+            verification_token_hash,
+            verification_token_expire_time,
             verified,
+            password_reset_token_hash,
+            password_reset_token_expire_time,
+            session_revoked_before,
             failed_login_attempts,
             deleted,
             creation_time,
@@ -39,9 +47,14 @@
             #{password},
             #{username},
             #{role},
+            #{accountStatus},
             #{enabled},
-            #{verificationToken},
+            #{verificationTokenHash},
+            #{verificationTokenExpireTime},
             #{verified},
+            #{passwordResetTokenHash},
+            #{passwordResetTokenExpireTime},
+            #{sessionRevokedBefore},
             #{failedLoginAttempts},
             #{deleted},
             CURRENT_TIMESTAMP,
@@ -73,17 +86,20 @@
     </select>
 
     <select id="findByVerificationToken" parameterType="String" resultMap="UserResultMap">
-        SELECT * FROM users WHERE verification_token = #{token} AND deleted = FALSE
+        SELECT * FROM users WHERE verification_token_hash = #{tokenHash} AND deleted = FALSE
     </select>
 
     <select id="findByPasswordResetToken" parameterType="String" resultMap="UserResultMap">
-        SELECT * FROM users WHERE password_reset_token = #{token} AND deleted = FALSE
+        SELECT * FROM users WHERE password_reset_token_hash = #{tokenHash} AND deleted = FALSE
     </select>
 
     <select id="searchByUsername" resultMap="UserResultMap">
         SELECT *
         FROM users
         WHERE deleted = FALSE
+          AND enabled = TRUE
+          AND verified = TRUE
+          AND account_status = 'ACTIVE'
           AND id != #{excludeUserId}
           AND LOWER(username) LIKE CONCAT('%', LOWER(#{query}), '%')
         ORDER BY
@@ -101,9 +117,12 @@
         SET password = #{password},
             username = #{username},
             verified = #{verified},
-            verification_token = #{verificationToken},
-            password_reset_token = #{passwordResetToken},
+            account_status = #{accountStatus},
+            verification_token_hash = #{verificationTokenHash},
+            verification_token_expire_time = #{verificationTokenExpireTime},
+            password_reset_token_hash = #{passwordResetTokenHash},
             password_reset_token_expire_time = #{passwordResetTokenExpireTime},
+            session_revoked_before = #{sessionRevokedBefore},
             failed_login_attempts = #{failedLoginAttempts},
             lockout_time = #{lockoutTime},
             enabled = #{enabled},
@@ -125,6 +144,7 @@
         UPDATE users
         SET deleted = TRUE,
             enabled = FALSE,
+            account_status = 'DELETED',
             update_time = CURRENT_TIMESTAMP
         WHERE id = #{id}
     </update>

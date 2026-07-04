@@ -6,6 +6,7 @@ import com.archipelago.dto.request.RegisterRequest;
 import com.archipelago.dto.request.ResetPasswordRequest;
 import com.archipelago.dto.response.SessionResponse;
 import com.archipelago.dto.response.UserSummaryResponse;
+import com.archipelago.exception.InvalidCredentialsException;
 import com.archipelago.model.User;
 import com.archipelago.util.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,10 +35,9 @@ public class AuthController {
             @Valid @RequestBody RegisterRequest request,
             HttpServletRequest httpServletRequest
     ) {
-        User user = authService.register(request);
-        authService.startSession(user, httpServletRequest);
+        authService.register(request, httpServletRequest);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success(SessionResponse.authenticated(user), "Registration successful"));
+                .body(ApiResponse.success(SessionResponse.anonymous(), "Check your email to finish signup"));
     }
 
     @PostMapping("/login")
@@ -45,14 +45,14 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest httpServletRequest
     ) {
-        User user = authService.authenticate(request);
+        User user = authService.authenticate(request, httpServletRequest);
         authService.startSession(user, httpServletRequest);
         return ResponseEntity.ok(ApiResponse.success(SessionResponse.authenticated(user), "Login successful"));
     }
 
     @PostMapping("/demo")
     public ResponseEntity<ApiResponse<SessionResponse>> demo(HttpServletRequest httpServletRequest) {
-        User user = authService.authenticateDemoUser();
+        User user = authService.authenticateDemoUser(httpServletRequest);
         authService.startSession(user, httpServletRequest);
         return ResponseEntity.ok(ApiResponse.success(SessionResponse.authenticated(user), "Demo session opened"));
     }
@@ -69,28 +69,41 @@ public class AuthController {
         if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
             return ResponseEntity.ok(ApiResponse.success(SessionResponse.anonymous(), "Session loaded"));
         }
-        User user = authService.getSessionUser();
-        return ResponseEntity.ok(ApiResponse.success(
-                new SessionResponse(true, UserSummaryResponse.from(user)),
-                "Session loaded"
-        ));
+        try {
+            User user = authService.getSessionUser();
+            return ResponseEntity.ok(ApiResponse.success(
+                    new SessionResponse(true, UserSummaryResponse.from(user)),
+                    "Session loaded"
+            ));
+        } catch (InvalidCredentialsException exception) {
+            return ResponseEntity.ok(ApiResponse.success(SessionResponse.anonymous(), "Session loaded"));
+        }
     }
 
     @GetMapping("/verify")
-    public ResponseEntity<ApiResponse<Void>> verify(@RequestParam String token) {
-        authService.verifyAccount(token);
+    public ResponseEntity<ApiResponse<Void>> verify(@RequestParam String token, HttpServletRequest request) {
+        authService.verifyAccount(token, request);
         return ResponseEntity.ok(ApiResponse.success("Account verified"));
     }
 
     @PostMapping("/forgot-password")
-    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
-        authService.handleForgotPassword(request.getEmail());
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request,
+                                                            HttpServletRequest httpServletRequest) {
+        authService.handleForgotPassword(request.getEmail(), httpServletRequest);
         return ResponseEntity.ok(ApiResponse.success("If the account exists, a reset link has been issued"));
     }
 
+    @PostMapping("/resend-verification")
+    public ResponseEntity<ApiResponse<Void>> resendVerification(@Valid @RequestBody ForgotPasswordRequest request,
+                                                                HttpServletRequest httpServletRequest) {
+        authService.resendVerification(request.getEmail(), httpServletRequest);
+        return ResponseEntity.ok(ApiResponse.success("If the account is pending, a verification link has been issued"));
+    }
+
     @PostMapping("/reset-password")
-    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
-        authService.resetPassword(request.getToken(), request.getNewPassword());
+    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request,
+                                                           HttpServletRequest httpServletRequest) {
+        authService.resetPassword(request.getToken(), request.getNewPassword(), httpServletRequest);
         return ResponseEntity.ok(ApiResponse.success("Password updated"));
     }
 }
