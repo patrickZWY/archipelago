@@ -35,6 +35,54 @@ export type Movie = {
   runtimeMinutes: number | null;
   castMembers: string[];
   directorNotes: string | null;
+  catalogGenres?: MovieCatalogGenre[];
+  people?: MoviePerson[];
+  externalIds?: MovieExternalId[];
+};
+
+export type MovieCatalogGenre = {
+  provider: string;
+  source: string;
+  name: string;
+};
+
+export type MoviePerson = {
+  provider: string;
+  source: string;
+  name: string;
+  role: string;
+  billingOrder: number;
+};
+
+export type MovieExternalId = {
+  provider: string;
+  source: string;
+  type: string;
+  value: string;
+};
+
+export type MovieGraphStatus = "all" | "in_graph" | "not_in_graph";
+
+export type MovieSearchFilters = {
+  query?: string;
+  person?: string;
+  genre?: string;
+  year?: string;
+  graphStatus?: MovieGraphStatus;
+};
+
+export type GraphSuggestionEvidence = {
+  type: "SHARED_DIRECTOR" | "SHARED_CAST" | "SHARED_GENRE" | "SAME_DECADE";
+  label: string;
+  values: string[];
+};
+
+export type GraphSuggestion = {
+  candidateMovie: Movie;
+  category: ConnectionCategory;
+  confidence: number;
+  evidence: GraphSuggestionEvidence[];
+  existingEdge: boolean;
 };
 
 export type Connection = {

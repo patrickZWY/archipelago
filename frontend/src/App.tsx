@@ -7,7 +7,10 @@ import type {
   FriendRequests,
   GlobalGraph,
   GlobalGraphPath,
+  GraphSuggestion,
+  GraphSuggestionEvidence,
   Movie,
+  MovieGraphStatus,
   MoviePath,
   PublicUser,
   SessionResponse,
@@ -100,6 +103,69 @@ function GraphCanvas(props: ConnectionGraphProps) {
       <ConnectionGraph {...props} />
     </Suspense>
   );
+}
+
+function MovieDetailSummary({
+  movie,
+  connectionCount,
+  isFilteredOut = false,
+  actions,
+}: {
+  movie: Movie;
+  connectionCount?: number;
+  isFilteredOut?: boolean;
+  actions?: ReactNode;
+}) {
+  const genres = movie.genres ?? [];
+  const castMembers = movie.castMembers ?? [];
+  const externalIds = movie.externalIds ?? [];
+  const sources = catalogSources(movie);
+
+  return (
+    <div className="stack">
+      <p className="detail-stat"><strong>{movie.releaseYear}</strong> / {movie.director}</p>
+      {movie.tagline && <p className="detail-copy">{movie.tagline}</p>}
+      {movie.synopsis && <p className="detail-copy">{movie.synopsis}</p>}
+      {genres.length > 0 && <p className="detail-stat">Genres: {genres.join(", ")}</p>}
+      {movie.runtimeMinutes !== null && movie.runtimeMinutes !== undefined && (
+        <p className="detail-stat">Runtime: {movie.runtimeMinutes} minutes</p>
+      )}
+      {castMembers.length > 0 && <p className="detail-stat">Cast: {castMembers.join(", ")}</p>}
+      {movie.directorNotes && <p className="detail-copy">{movie.directorNotes}</p>}
+      {externalIds.length > 0 && (
+        <p className="detail-stat">IDs: {externalIds.map((externalId) => `${externalId.type}:${externalId.value}`).join(", ")}</p>
+      )}
+      {sources.length > 0 && <p className="detail-stat">Sources: {sources.join(", ")}</p>}
+      {connectionCount !== undefined && <p className="detail-stat">{connectionCount} visible connections in this view</p>}
+      {isFilteredOut ? (
+        <p className="empty-state">The current filters isolate this movie. Pick another node or relax the filters.</p>
+      ) : null}
+      {actions}
+    </div>
+  );
+}
+
+function catalogSources(movie: Movie) {
+  const sourceMap = new Map<string, string>();
+  for (const item of [...(movie.catalogGenres ?? []), ...(movie.people ?? []), ...(movie.externalIds ?? [])]) {
+    const key = `${item.provider}:${item.source}`;
+    sourceMap.set(key, `${item.provider}/${item.source}`);
+  }
+  return [...sourceMap.values()];
+}
+
+function suggestionEvidenceText(evidence: GraphSuggestionEvidence) {
+  return evidence.values.length > 0
+    ? `${evidence.label}: ${evidence.values.join(", ")}`
+    : evidence.label;
+}
+
+function suggestionReason(fromMovie: Movie, suggestion: GraphSuggestion) {
+  const evidence = suggestion.evidence.map(suggestionEvidenceText).join("; ");
+  const reason = evidence
+    ? `Suggested from catalog evidence for ${fromMovie.title}: ${evidence}`
+    : `Suggested catalog connection from ${fromMovie.title} to ${suggestion.candidateMovie.title}`;
+  return reason.length > 500 ? `${reason.slice(0, 497)}...` : reason;
 }
 
 export default function App() {
@@ -451,6 +517,14 @@ function AppLayout({
 function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
+  const [personFilter, setPersonFilter] = useState("");
+  const deferredPersonFilter = useDeferredValue(personFilter);
+  const [genreFilter, setGenreFilter] = useState("");
+  const deferredGenreFilter = useDeferredValue(genreFilter);
+  const [yearFilter, setYearFilter] = useState("");
+  const deferredYearFilter = useDeferredValue(yearFilter);
+  const [graphStatusFilter, setGraphStatusFilter] = useState<MovieGraphStatus>("all");
+  const deferredGraphStatusFilter = useDeferredValue(graphStatusFilter);
   const [searchResults, setSearchResults] = useState<Movie[]>([]);
   const [highlightedSearchIndex, setHighlightedSearchIndex] = useState(0);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
@@ -466,6 +540,11 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
   const [moviePath, setMoviePath] = useState<MoviePath | null>(null);
   const [shareUrl, setShareUrl] = useState("");
   const [shares, setShares] = useState<SharedGraphExportSummary[]>([]);
+  const [graphSuggestions, setGraphSuggestions] = useState<GraphSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState("");
+  const [confirmingSuggestionMovieId, setConfirmingSuggestionMovieId] = useState<number | null>(null);
+  const [pendingSuggestionMovieId, setPendingSuggestionMovieId] = useState<number | null>(null);
 
   useEffect(() => {
     void refreshShares();
@@ -473,13 +552,27 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
   }, []);
 
   useEffect(() => {
-    if (!deferredQuery.trim()) {
+    const searchQuery = deferredQuery.trim();
+    const hasTypedQuery = searchQuery.length > 1;
+    const hasActiveFilter = Boolean(
+      deferredPersonFilter.trim()
+      || deferredGenreFilter.trim()
+      || deferredYearFilter.trim()
+      || deferredGraphStatusFilter !== "all",
+    );
+    if (!hasTypedQuery && !hasActiveFilter) {
       setSearchResults([]);
       setHighlightedSearchIndex(0);
       return;
     }
     const timeout = window.setTimeout(() => {
-      void api.searchMovies(deferredQuery.trim())
+      void api.searchMovies({
+        query: hasTypedQuery ? searchQuery : undefined,
+        person: deferredPersonFilter,
+        genre: deferredGenreFilter,
+        year: deferredYearFilter,
+        graphStatus: deferredGraphStatusFilter,
+      })
         .then((results) => startTransition(() => {
           setSearchResults(results);
           setHighlightedSearchIndex(0);
@@ -487,7 +580,14 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
         .catch((error: Error) => setStatus(error.message));
     }, 180);
     return () => window.clearTimeout(timeout);
-  }, [deferredQuery, setStatus]);
+  }, [
+    deferredQuery,
+    deferredGenreFilter,
+    deferredGraphStatusFilter,
+    deferredPersonFilter,
+    deferredYearFilter,
+    setStatus,
+  ]);
 
   async function refreshShares() {
     try {
@@ -524,6 +624,44 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
   });
 
   const selectedGraphMovie = componentMovies.find((movie) => movie.id === selectedGraphMovieId) ?? selectedMovie;
+
+  useEffect(() => {
+    if (!selectedGraphMovie) {
+      setGraphSuggestions([]);
+      setSuggestionsLoading(false);
+      setSuggestionError("");
+      setConfirmingSuggestionMovieId(null);
+      return;
+    }
+
+    let cancelled = false;
+    setSuggestionsLoading(true);
+    setGraphSuggestions([]);
+    setSuggestionError("");
+    setConfirmingSuggestionMovieId(null);
+    void api.getGraphSuggestions(selectedGraphMovie.id, { limit: 4 })
+      .then((suggestions) => {
+        if (!cancelled) {
+          setGraphSuggestions(suggestions);
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setGraphSuggestions([]);
+          setSuggestionError(error.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSuggestionsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGraphMovie?.id, setStatus]);
+
   const selectedConnection = filteredConnections.find((connection) => connection.id === selectedConnectionId)
     ?? movieConnections.find((connection) => connection.id === selectedConnectionId)
     ?? null;
@@ -550,6 +688,37 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
     } catch (error) {
       setMoviePath(null);
       setStatus((error as Error).message);
+    }
+  }
+
+  async function addSuggestedConnection(suggestion: GraphSuggestion) {
+    if (!selectedGraphMovie) {
+      setStatus("Select a movie before adding a suggested connection");
+      return;
+    }
+
+    const fromMovie = selectedGraphMovie;
+    setPendingSuggestionMovieId(suggestion.candidateMovie.id);
+    try {
+      await api.createConnection({
+        fromMovieId: fromMovie.id,
+        toMovieId: suggestion.candidateMovie.id,
+        reason: suggestionReason(fromMovie, suggestion),
+        category: suggestion.category,
+      });
+      const graph = await api.getMovieConnections(selectedMovie?.id ?? fromMovie.id);
+      setComponentMovies(graph.movies ?? [graph.movie]);
+      setMovieConnections(graph.connections);
+      setSelectedGraphMovieId(fromMovie.id);
+      setSelectedConnectionId(null);
+      setSuggestionError("");
+      setConfirmingSuggestionMovieId(null);
+      setGraphSuggestions(await api.getGraphSuggestions(fromMovie.id, { limit: 4 }));
+      setStatus(`Added ${suggestion.candidateMovie.title} to your graph`);
+    } catch (error) {
+      setStatus((error as Error).message);
+    } finally {
+      setPendingSuggestionMovieId(null);
     }
   }
 
@@ -620,6 +789,22 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
     }
   }
 
+  function clearSearchFilters() {
+    setPersonFilter("");
+    setGenreFilter("");
+    setYearFilter("");
+    setGraphStatusFilter("all");
+    setHighlightedSearchIndex(0);
+  }
+
+  const hasActiveSearchFilter = Boolean(
+    deferredPersonFilter.trim()
+    || deferredGenreFilter.trim()
+    || deferredYearFilter.trim()
+    || deferredGraphStatusFilter !== "all",
+  );
+  const hasActiveMovieSearch = deferredQuery.trim().length > 1 || hasActiveSearchFilter;
+
   return (
     <main className="page-stack">
       <section className="panel page-panel">
@@ -637,7 +822,58 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
           }}
           onKeyDown={handleSearchKeyDown}
         />
-        {deferredQuery.trim().length > 1 && searchResults.length === 0 && (
+        <div className="search-filter-grid">
+          <label>
+            <span>Person</span>
+            <input
+              value={personFilter}
+              onChange={(event) => {
+                setPersonFilter(event.target.value);
+                setHighlightedSearchIndex(0);
+              }}
+            />
+          </label>
+          <label>
+            <span>Genre</span>
+            <input
+              value={genreFilter}
+              onChange={(event) => {
+                setGenreFilter(event.target.value);
+                setHighlightedSearchIndex(0);
+              }}
+            />
+          </label>
+          <label>
+            <span>Year</span>
+            <input
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={yearFilter}
+              onChange={(event) => {
+                setYearFilter(event.target.value);
+                setHighlightedSearchIndex(0);
+              }}
+            />
+          </label>
+          <label>
+            <span>Graph</span>
+            <select
+              value={graphStatusFilter}
+              onChange={(event) => {
+                setGraphStatusFilter(event.target.value as MovieGraphStatus);
+                setHighlightedSearchIndex(0);
+              }}
+            >
+              <option value="all">All movies</option>
+              <option value="in_graph">In my graph</option>
+              <option value="not_in_graph">Outside my graph</option>
+            </select>
+          </label>
+          <button className="ghost" type="button" onClick={clearSearchFilters} disabled={!hasActiveSearchFilter}>
+            Clear filters
+          </button>
+        </div>
+        {hasActiveMovieSearch && searchResults.length === 0 && (
           <p className="empty-state">No close matches yet. Try another title, director, or rough spelling.</p>
         )}
         <div className="movie-grid">
@@ -737,41 +973,96 @@ function ExplorePage({ setStatus }: { setStatus: (status: string) => void }) {
                 <p>{selectedGraphMovie ? selectedGraphMovie.title : "Select a movie node in the graph."}</p>
               </div>
               {selectedGraphMovie ? (
-                <div className="stack">
-                  <p className="detail-stat"><strong>{selectedGraphMovie.releaseYear}</strong> / {selectedGraphMovie.director}</p>
-                  {selectedGraphMovie.tagline && <p className="detail-copy">{selectedGraphMovie.tagline}</p>}
-                  {selectedGraphMovie.synopsis && <p className="detail-copy">{selectedGraphMovie.synopsis}</p>}
-                  {(selectedGraphMovie.genres ?? []).length > 0 && <p className="detail-stat">Genres: {(selectedGraphMovie.genres ?? []).join(", ")}</p>}
-                  {selectedGraphMovie.runtimeMinutes && <p className="detail-stat">Runtime: {selectedGraphMovie.runtimeMinutes} minutes</p>}
-                  {(selectedGraphMovie.castMembers ?? []).length > 0 && <p className="detail-stat">Cast: {(selectedGraphMovie.castMembers ?? []).join(", ")}</p>}
-                  {selectedGraphMovie.directorNotes && <p className="detail-copy">{selectedGraphMovie.directorNotes}</p>}
-                  <p className="detail-stat">{selectedMovieConnectionCount} visible connections in this view</p>
-                  {selectedMovieIsFilteredOut ? (
-                    <p className="empty-state">The current filters isolate this movie. Pick another node or relax the filters.</p>
-                  ) : null}
-                  <div className="pill-row">
-                    <button
-                      className="pill"
-                      onClick={() => {
-                        setPathFromMovieId(String(selectedGraphMovie.id));
-                        setSelectedConnectionId(null);
-                      }}
-                    >
-                      Use as path start
-                    </button>
-                    <button
-                      className="pill"
-                      onClick={() => {
-                        setPathToMovieId(String(selectedGraphMovie.id));
-                        setSelectedConnectionId(null);
-                      }}
-                    >
-                      Use as path end
-                    </button>
-                  </div>
-                </div>
+                <MovieDetailSummary
+                  movie={selectedGraphMovie}
+                  connectionCount={selectedMovieConnectionCount}
+                  isFilteredOut={selectedMovieIsFilteredOut}
+                  actions={(
+                    <div className="pill-row">
+                      <button
+                        className="pill"
+                        onClick={() => {
+                          setPathFromMovieId(String(selectedGraphMovie.id));
+                          setSelectedConnectionId(null);
+                        }}
+                      >
+                        Use as path start
+                      </button>
+                      <button
+                        className="pill"
+                        onClick={() => {
+                          setPathToMovieId(String(selectedGraphMovie.id));
+                          setSelectedConnectionId(null);
+                        }}
+                      >
+                        Use as path end
+                      </button>
+                    </div>
+                  )}
+                />
               ) : (
                 <p className="empty-state">The drawer updates when you click a node.</p>
+              )}
+            </section>
+
+            <section className="panel inset-panel">
+              <div className="panel-header">
+                <h3>Suggested connections</h3>
+                <p>{selectedGraphMovie ? `Catalog-backed candidates for ${selectedGraphMovie.title}.` : "Select a movie node to see suggestions."}</p>
+              </div>
+              {selectedGraphMovie ? (
+                <div className="list dense-list">
+                  {suggestionsLoading ? <p className="empty-state">Loading suggestions...</p> : null}
+                  {!suggestionsLoading && suggestionError ? (
+                    <p className="empty-state">{suggestionError}</p>
+                  ) : null}
+                  {!suggestionsLoading && !suggestionError && graphSuggestions.length === 0 ? (
+                    <p className="empty-state">No catalog-backed suggestions are available for this movie yet.</p>
+                  ) : null}
+                  {graphSuggestions.map((suggestion) => {
+                    const isConfirming = confirmingSuggestionMovieId === suggestion.candidateMovie.id;
+                    const isPending = pendingSuggestionMovieId === suggestion.candidateMovie.id;
+                    return (
+                      <article className="connection-card suggestion-card" key={`suggestion-${suggestion.candidateMovie.id}`}>
+                        <strong>{suggestion.candidateMovie.title}</strong>
+                        <span className="detail-stat">
+                          {suggestion.candidateMovie.releaseYear} / {suggestion.candidateMovie.director}
+                        </span>
+                        <small>{formatConnectionCategory(suggestion.category)} / confidence {Math.round(suggestion.confidence * 100)}%</small>
+                        <div className="suggestion-evidence-list">
+                          {suggestion.evidence.map((evidence) => (
+                            <span key={`${suggestion.candidateMovie.id}-${evidence.type}-${evidence.values.join("|")}`}>
+                              {suggestionEvidenceText(evidence)}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="pill-row">
+                          {isConfirming ? (
+                            <>
+                              <button className="pill" type="button" onClick={() => void addSuggestedConnection(suggestion)} disabled={isPending}>
+                                {isPending ? "Adding..." : "Confirm add"}
+                              </button>
+                              <button className="pill" type="button" onClick={() => setConfirmingSuggestionMovieId(null)} disabled={isPending}>
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              className="pill"
+                              type="button"
+                              onClick={() => setConfirmingSuggestionMovieId(suggestion.candidateMovie.id)}
+                              disabled={isPending}
+                            >
+                              Add to my graph
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="empty-state">Suggestions appear after a movie graph is loaded.</p>
               )}
             </section>
 
@@ -1147,21 +1438,17 @@ function GlobalGraphsPage({ setStatus }: { setStatus: (status: string) => void }
                   <p>{selectedGraphMovie ? selectedGraphMovie.title : "Select a movie node in the graph."}</p>
                 </div>
                 {selectedGraphMovie ? (
-                  <div className="stack">
-                    <p className="detail-stat"><strong>{selectedGraphMovie.releaseYear}</strong> / {selectedGraphMovie.director}</p>
-                    {selectedGraphMovie.tagline && <p className="detail-copy">{selectedGraphMovie.tagline}</p>}
-                    {selectedGraphMovie.synopsis && <p className="detail-copy">{selectedGraphMovie.synopsis}</p>}
-                    {(selectedGraphMovie.genres ?? []).length > 0 && <p className="detail-stat">Genres: {(selectedGraphMovie.genres ?? []).join(", ")}</p>}
-                    {selectedGraphMovie.runtimeMinutes && <p className="detail-stat">Runtime: {selectedGraphMovie.runtimeMinutes} minutes</p>}
-                    {(selectedGraphMovie.castMembers ?? []).length > 0 && <p className="detail-stat">Cast: {(selectedGraphMovie.castMembers ?? []).join(", ")}</p>}
-                    {selectedGraphMovie.directorNotes && <p className="detail-copy">{selectedGraphMovie.directorNotes}</p>}
-                    <p className="detail-stat">{selectedMovieConnectionCount} visible connections in this view</p>
-                    {selectedMovieIsFilteredOut ? <p className="empty-state">The current filters isolate this movie. Pick another node or relax the filters.</p> : null}
-                    <div className="pill-row">
-                      <button className="pill" onClick={() => setPathFromMovieId(String(selectedGraphMovie.id))}>Use as path start</button>
-                      <button className="pill" onClick={() => setPathToMovieId(String(selectedGraphMovie.id))}>Use as path end</button>
-                    </div>
-                  </div>
+                  <MovieDetailSummary
+                    movie={selectedGraphMovie}
+                    connectionCount={selectedMovieConnectionCount}
+                    isFilteredOut={selectedMovieIsFilteredOut}
+                    actions={(
+                      <div className="pill-row">
+                        <button className="pill" onClick={() => setPathFromMovieId(String(selectedGraphMovie.id))}>Use as path start</button>
+                        <button className="pill" onClick={() => setPathToMovieId(String(selectedGraphMovie.id))}>Use as path end</button>
+                      </div>
+                    )}
+                  />
                 ) : (
                   <p className="empty-state">The drawer updates when you click a node.</p>
                 )}
@@ -2076,23 +2363,17 @@ function FriendGraphPage({
                         <p>{selectedGraphMovie?.title ?? "Select a node"}</p>
                       </div>
                       {selectedGraphMovie ? (
-                        <div className="stack">
-                          <p className="detail-stat"><strong>{selectedGraphMovie.releaseYear}</strong> / {selectedGraphMovie.director}</p>
-                          {selectedGraphMovie.tagline && <p className="detail-copy">{selectedGraphMovie.tagline}</p>}
-                          {selectedGraphMovie.synopsis && <p className="detail-copy">{selectedGraphMovie.synopsis}</p>}
-                          {(selectedGraphMovie.genres ?? []).length > 0 && <p className="detail-stat">Genres: {(selectedGraphMovie.genres ?? []).join(", ")}</p>}
-                          {selectedGraphMovie.runtimeMinutes && <p className="detail-stat">Runtime: {selectedGraphMovie.runtimeMinutes} minutes</p>}
-                          {(selectedGraphMovie.castMembers ?? []).length > 0 && <p className="detail-stat">Cast: {(selectedGraphMovie.castMembers ?? []).join(", ")}</p>}
-                          {selectedGraphMovie.directorNotes && <p className="detail-copy">{selectedGraphMovie.directorNotes}</p>}
-                          <p className="detail-stat">{selectedMovieConnectionCount} visible connections in this view</p>
-                          {selectedMovieIsFilteredOut ? (
-                            <p className="empty-state">The current filters isolate this movie. Pick another node or relax the filters.</p>
-                          ) : null}
-                          <div className="pill-row">
-                            <button className="pill" onClick={() => setPathFromMovieId(String(selectedGraphMovie.id))}>Use as path start</button>
-                            <button className="pill" onClick={() => setPathToMovieId(String(selectedGraphMovie.id))}>Use as path end</button>
-                          </div>
-                        </div>
+                        <MovieDetailSummary
+                          movie={selectedGraphMovie}
+                          connectionCount={selectedMovieConnectionCount}
+                          isFilteredOut={selectedMovieIsFilteredOut}
+                          actions={(
+                            <div className="pill-row">
+                              <button className="pill" onClick={() => setPathFromMovieId(String(selectedGraphMovie.id))}>Use as path start</button>
+                              <button className="pill" onClick={() => setPathToMovieId(String(selectedGraphMovie.id))}>Use as path end</button>
+                            </div>
+                          )}
+                        />
                       ) : <p className="empty-state">Click a node to inspect it.</p>}
                     </section>
 
@@ -2242,13 +2523,7 @@ function SharedGraphPage({ authenticatedUsername }: { authenticatedUsername: str
                     <p>{selectedMovie?.title ?? "Select a node"}</p>
                   </div>
                   {selectedMovie && (
-                    <div className="stack">
-                      <p className="detail-stat"><strong>{selectedMovie.releaseYear}</strong> / {selectedMovie.director}</p>
-                      {selectedMovie.tagline && <p className="detail-copy">{selectedMovie.tagline}</p>}
-                      {selectedMovie.synopsis && <p className="detail-copy">{selectedMovie.synopsis}</p>}
-                      {(selectedMovie.genres ?? []).length > 0 && <p className="detail-stat">Genres: {(selectedMovie.genres ?? []).join(", ")}</p>}
-                      {(selectedMovie.castMembers ?? []).length > 0 && <p className="detail-stat">Cast: {(selectedMovie.castMembers ?? []).join(", ")}</p>}
-                    </div>
+                    <MovieDetailSummary movie={selectedMovie} />
                   )}
                 </section>
                 <section className="panel inset-panel">

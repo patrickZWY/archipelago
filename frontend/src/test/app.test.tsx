@@ -377,6 +377,62 @@ describe("App", () => {
     expect(screen.getByText("atlas")).toBeInTheDocument();
   });
 
+  it("passes explore search filters to the movie search endpoint", async () => {
+    const movie = {
+      id: 42,
+      title: "Solaris",
+      releaseYear: 1972,
+      director: "Andrei Tarkovsky",
+      pictureUrl: null,
+      externalId: null,
+      tagline: null,
+      synopsis: null,
+      genres: ["Science Fiction"],
+      runtimeMinutes: 167,
+      castMembers: ["Donatas Banionis"],
+      directorNotes: null,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { authenticated: true, user: { id: 1, email: "a@example.com", username: "atlas" } },
+            message: "ok",
+          }),
+        };
+      }
+      if (url.endsWith("/api/shares")) {
+        return { ok: true, json: async () => ({ success: true, data: [], message: "ok" }) };
+      }
+      if (url.includes("/api/movies/search")) {
+        return { ok: true, json: async () => ({ success: true, data: [movie], message: "ok" }) };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const explorePanel = (await screen.findByText("Explore Movie Graphs")).closest("section");
+    expect(explorePanel).not.toBeNull();
+    await userEvent.type(within(explorePanel as HTMLElement).getByPlaceholderText("Search local catalog, even with rough spelling"), "Solar");
+    await userEvent.type(within(explorePanel as HTMLElement).getByLabelText("Person"), "Tilda");
+    await userEvent.type(within(explorePanel as HTMLElement).getByLabelText("Genre"), "Mystery");
+    await userEvent.type(within(explorePanel as HTMLElement).getByLabelText("Year"), "2021");
+    await userEvent.selectOptions(within(explorePanel as HTMLElement).getByLabelText("Graph"), "not_in_graph");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/movies/search?q=Solar&person=Tilda&genre=Mystery&year=2021&graphStatus=not_in_graph",
+        expect.objectContaining({ credentials: "include" }),
+      );
+    });
+    expect(await screen.findByRole("button", { name: /Solaris/i })).toBeInTheDocument();
+  });
+
   it("submits the profile form", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -1084,6 +1140,145 @@ describe("App", () => {
     });
   });
 
+  it("shows graph suggestions and creates a confirmed suggested connection", async () => {
+    const movie = {
+      id: 1,
+      title: "Inception",
+      releaseYear: 2010,
+      director: "Christopher Nolan",
+      pictureUrl: null,
+      externalId: null,
+      tagline: null,
+      synopsis: null,
+      genres: ["Science Fiction"],
+      runtimeMinutes: 148,
+      castMembers: ["Leonardo DiCaprio"],
+      directorNotes: null,
+    };
+    const suggestionMovie = {
+      id: 4,
+      title: "The Prestige",
+      releaseYear: 2006,
+      director: "Christopher Nolan",
+      pictureUrl: null,
+      externalId: null,
+      tagline: null,
+      synopsis: null,
+      genres: ["Drama"],
+      runtimeMinutes: 130,
+      castMembers: ["Christian Bale"],
+      directorNotes: null,
+    };
+    let connectionCreated = false;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/session")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { authenticated: true, user: { id: 1, email: "a@example.com", username: "atlas" } },
+            message: "ok",
+          }),
+        };
+      }
+      if (url === "/api/shares") {
+        return { ok: true, json: async () => ({ success: true, data: [], message: "ok" }) };
+      }
+      if (url.includes("/api/movies/search")) {
+        return { ok: true, json: async () => ({ success: true, data: [movie], message: "ok" }) };
+      }
+      if (url.endsWith("/api/movies/1/connections")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              movie,
+              movies: connectionCreated ? [movie, suggestionMovie] : [movie],
+              connections: connectionCreated
+                ? [{
+                  id: 12,
+                  fromMovieId: 1,
+                  fromMovieTitle: "Inception",
+                  toMovieId: 4,
+                  toMovieTitle: "The Prestige",
+                  reason: "Suggested from catalog evidence",
+                  weight: 1,
+                  category: "director",
+                }]
+                : [],
+            },
+            message: "Movie graph retrieved",
+          }),
+        };
+      }
+      if (url.startsWith("/api/graph-suggestions?")) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: connectionCreated ? [] : [{
+              candidateMovie: suggestionMovie,
+              category: "director",
+              confidence: 0.45,
+              evidence: [{ type: "SHARED_DIRECTOR", label: "Shared director", values: ["Christopher Nolan"] }],
+              existingEdge: false,
+            }],
+            message: "Graph suggestions retrieved",
+          }),
+        };
+      }
+      if (url.endsWith("/api/connections") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        expect(body).toMatchObject({
+          fromMovieId: 1,
+          toMovieId: 4,
+          category: "director",
+        });
+        expect(body.reason).toContain("Shared director: Christopher Nolan");
+        connectionCreated = true;
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              id: 12,
+              fromMovieId: 1,
+              fromMovieTitle: "Inception",
+              toMovieId: 4,
+              toMovieTitle: "The Prestige",
+              reason: body.reason,
+              weight: 1,
+              category: "director",
+            },
+            message: "Connection created",
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await screen.findByText("Explore Movie Graphs");
+    await userEvent.type(screen.getByPlaceholderText("Search local catalog, even with rough spelling"), "Incep");
+    await userEvent.click(await screen.findByRole("button", { name: /Inception/i }));
+
+    expect(await screen.findByText("The Prestige")).toBeInTheDocument();
+    expect(screen.getByText("Shared director: Christopher Nolan")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add to my graph" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm add" }));
+
+    await waitFor(() => {
+      expect(connectionCreated).toBe(true);
+      expect(graphProps.last?.connections).toHaveLength(1);
+    });
+    expect(await screen.findByText("No catalog-backed suggestions are available for this movie yet.")).toBeInTheDocument();
+  });
+
   it("lists shares, refreshes after create, and revokes an existing share", async () => {
     const movie = {
       id: 1,
@@ -1424,6 +1619,9 @@ describe("App", () => {
       runtimeMinutes: 148,
       castMembers: ["Leonardo DiCaprio"],
       directorNotes: "Practical spectacle.",
+      catalogGenres: [{ provider: "curated", source: "curated-spring-2026", name: "Science Fiction" }],
+      people: [{ provider: "curated", source: "curated-spring-2026", name: "Leonardo DiCaprio", role: "CAST", billingOrder: 1 }],
+      externalIds: [{ provider: "curated", source: "curated-spring-2026", type: "imdb", value: "tt1375666" }],
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -1463,6 +1661,8 @@ describe("App", () => {
 
     expect(await screen.findByText("Demo Nolan cluster")).toBeInTheDocument();
     expect(await screen.findByText("Read-only export of a saved movie component.")).toBeInTheDocument();
+    expect(await screen.findByText("IDs: imdb:tt1375666")).toBeInTheDocument();
+    expect(await screen.findByText("Sources: curated/curated-spring-2026")).toBeInTheDocument();
     await waitFor(() => expect(graphProps.last?.movie?.id).toBe(1));
   });
 });

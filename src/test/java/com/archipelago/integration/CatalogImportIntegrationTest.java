@@ -150,6 +150,134 @@ class CatalogImportIntegrationTest {
         assertThat(countRuns("test-curated-invalid", "APPLY", "COMPLETED_WITH_FAILURES")).isEqualTo(1);
     }
 
+    @Test
+    void movieSearchFiltersUseNormalizedMetadataAndCurrentUserGraphStatus() throws Exception {
+        MockHttpSession session = registerUser("catalog-search@example.com", "catalog-search");
+        CsrfContext csrf = fetchCsrf(session);
+        mockMvc.perform(post("/api/movies/imports/apply?provider=curated&source=test-curated-apply")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token()))
+                .andExpect(status().isOk());
+
+        long applyOneMovieId = movieIdByExternalId("ttapplyboundary1");
+
+        mockMvc.perform(get("/api/movies/search").param("person", "Apply Actor Two").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.title == 'Apply Boundary One')]").isNotEmpty())
+                .andExpect(jsonPath("$.data[?(@.title == 'Apply Boundary Two')]").isEmpty());
+
+        mockMvc.perform(get("/api/movies/search?genre=Second").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.title == 'Apply Boundary Two')]").isNotEmpty())
+                .andExpect(jsonPath("$.data[?(@.title == 'Apply Boundary One')]").isEmpty());
+
+        mockMvc.perform(get("/api/movies/search?q=Apply&year=2026").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.title == 'Apply Boundary One')]").isNotEmpty())
+                .andExpect(jsonPath("$.data[?(@.title == 'Apply Boundary Two')]").isEmpty());
+
+        csrf = fetchCsrf(session);
+        mockMvc.perform(post("/api/connections")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromMovieId":1,"toMovieId":%d,"reason":"Search graph status fixture","weight":1.0,"category":"theme"}
+                                """.formatted(applyOneMovieId)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/movies/search?q=Apply&graphStatus=in_graph").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.title == 'Apply Boundary One')]").isNotEmpty())
+                .andExpect(jsonPath("$.data[?(@.title == 'Apply Boundary Two')]").isEmpty());
+
+        mockMvc.perform(get("/api/movies/search?q=Apply&graphStatus=not_in_graph").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.title == 'Apply Boundary One')]").isEmpty())
+                .andExpect(jsonPath("$.data[?(@.title == 'Apply Boundary Two')]").isNotEmpty());
+    }
+
+    @Test
+    void movieSearchRejectsInvalidFilterValues() throws Exception {
+        MockHttpSession session = registerUser("catalog-search-invalid@example.com", "catalog-search-invalid");
+
+        mockMvc.perform(get("/api/movies/search?year=twenty").session(session))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Year must be a four-digit number"));
+
+        mockMvc.perform(get("/api/movies/search?graphStatus=maybe").session(session))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Graph status must be all, in_graph, or not_in_graph"));
+    }
+
+    @Test
+    void graphSuggestionsUseExplainableMetadataAndAvoidDuplicateEdges() throws Exception {
+        MockHttpSession session = registerUser("catalog-suggestions@example.com", "catalog-suggestions");
+        CsrfContext csrf = fetchCsrf(session);
+        mockMvc.perform(post("/api/movies/imports/apply?provider=curated&source=test-curated-apply")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token()))
+                .andExpect(status().isOk());
+
+        long applyOneMovieId = movieIdByExternalId("ttapplyboundary1");
+        long applyTwoMovieId = movieIdByExternalId("ttapplyboundary2");
+
+        mockMvc.perform(get("/api/graph-suggestions")
+                        .param("movieId", String.valueOf(applyOneMovieId))
+                        .param("categories", "genre")
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].candidateMovie.id").value(applyTwoMovieId))
+                .andExpect(jsonPath("$.data[0].category").value("genre"))
+                .andExpect(jsonPath("$.data[0].confidence").value(0.08))
+                .andExpect(jsonPath("$.data[0].evidence[0].type").value("SHARED_GENRE"))
+                .andExpect(jsonPath("$.data[0].evidence[0].values[0]").value("Test"))
+                .andExpect(jsonPath("$.data[0].existingEdge").value(false));
+
+        csrf = fetchCsrf(session);
+        mockMvc.perform(post("/api/connections")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"fromMovieId":%d,"toMovieId":%d,"reason":"Suggested genre edge","weight":1.0,"category":"genre"}
+                                """.formatted(applyOneMovieId, applyTwoMovieId)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/graph-suggestions")
+                        .param("movieId", String.valueOf(applyOneMovieId))
+                        .param("categories", "genre")
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
+
+        mockMvc.perform(get("/api/graph-suggestions")
+                        .param("movieId", String.valueOf(applyOneMovieId))
+                        .param("categories", "genre")
+                        .param("includeExisting", "true")
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].candidateMovie.id").value(applyTwoMovieId))
+                .andExpect(jsonPath("$.data[0].existingEdge").value(true));
+    }
+
+    @Test
+    void graphSuggestionsRejectInvalidInput() throws Exception {
+        MockHttpSession session = registerUser("catalog-suggestions-invalid@example.com", "catalog-suggestions-invalid");
+
+        mockMvc.perform(get("/api/graph-suggestions?movieId=1&limit=0").session(session))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Limit must be between 1 and 25"));
+
+        mockMvc.perform(get("/api/graph-suggestions?movieId=1&categories=not-real").session(session))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Categories must be one or more supported graph categories"));
+    }
+
     private MockHttpSession registerUser(String email, String username) throws Exception {
         CsrfContext csrf = fetchCsrf(null);
         mockMvc.perform(post("/api/auth/register")
@@ -204,6 +332,10 @@ class CatalogImportIntegrationTest {
 
     private int countMoviesByExternalId(String externalId) {
         return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movies WHERE external_id = ?", Integer.class, externalId);
+    }
+
+    private long movieIdByExternalId(String externalId) {
+        return jdbcTemplate.queryForObject("SELECT id FROM movies WHERE external_id = ?", Long.class, externalId);
     }
 
     private int countRuns(String source, String operation, String status) {

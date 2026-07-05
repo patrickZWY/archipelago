@@ -73,6 +73,93 @@
         LIMIT #{limit}
     </select>
 
+    <select id="searchMoviesFiltered" resultMap="MovieResultMap">
+        SELECT m.*
+        FROM movies m
+        WHERE 1 = 1
+        <if test="query != null and query != ''">
+            AND (
+                LOWER(m.title) LIKE CONCAT('%', LOWER(#{query}), '%')
+                OR LOWER(m.director) LIKE CONCAT('%', LOWER(#{query}), '%')
+                OR LOWER(COALESCE(m.tagline, '')) LIKE CONCAT('%', LOWER(#{query}), '%')
+                OR LOWER(COALESCE(m.synopsis, '')) LIKE CONCAT('%', LOWER(#{query}), '%')
+                OR LOWER(COALESCE(m.genres, '')) LIKE CONCAT('%', LOWER(#{query}), '%')
+                OR LOWER(COALESCE(m.cast_members, '')) LIKE CONCAT('%', LOWER(#{query}), '%')
+                OR EXISTS (
+                    SELECT 1
+                    FROM movie_genres mg
+                    WHERE mg.movie_id = m.id
+                      AND LOWER(mg.genre) LIKE CONCAT('%', LOWER(#{query}), '%')
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM movie_people mp
+                    WHERE mp.movie_id = m.id
+                      AND LOWER(mp.person_name) LIKE CONCAT('%', LOWER(#{query}), '%')
+                )
+            )
+        </if>
+        <if test="person != null and person != ''">
+            AND (
+                LOWER(m.director) LIKE CONCAT('%', LOWER(#{person}), '%')
+                OR LOWER(COALESCE(m.cast_members, '')) LIKE CONCAT('%', LOWER(#{person}), '%')
+                OR EXISTS (
+                    SELECT 1
+                    FROM movie_people mp
+                    WHERE mp.movie_id = m.id
+                      AND LOWER(mp.person_name) LIKE CONCAT('%', LOWER(#{person}), '%')
+                )
+            )
+        </if>
+        <if test="genre != null and genre != ''">
+            AND (
+                LOWER(COALESCE(m.genres, '')) LIKE CONCAT('%', LOWER(#{genre}), '%')
+                OR EXISTS (
+                    SELECT 1
+                    FROM movie_genres mg
+                    WHERE mg.movie_id = m.id
+                      AND LOWER(mg.genre) LIKE CONCAT('%', LOWER(#{genre}), '%')
+                )
+            )
+        </if>
+        <if test="releaseYear != null">
+            AND m.release_year = #{releaseYear}
+        </if>
+        <if test="graphStatus == 'IN_GRAPH'">
+            AND EXISTS (
+                SELECT 1
+                FROM connections c
+                WHERE c.user_id = #{userId}
+                  AND (c.from_movie_id = m.id OR c.to_movie_id = m.id)
+            )
+        </if>
+        <if test="graphStatus == 'NOT_IN_GRAPH'">
+            AND NOT EXISTS (
+                SELECT 1
+                FROM connections c
+                WHERE c.user_id = #{userId}
+                  AND (c.from_movie_id = m.id OR c.to_movie_id = m.id)
+            )
+        </if>
+        <choose>
+            <when test="query != null and query != ''">
+                ORDER BY
+                CASE
+                    WHEN LOWER(m.title) = LOWER(#{query}) THEN 0
+                    WHEN LOWER(m.title) LIKE CONCAT(LOWER(#{query}), '%') THEN 1
+                    WHEN LOWER(m.director) LIKE CONCAT('%', LOWER(#{query}), '%') THEN 2
+                    WHEN LOWER(COALESCE(m.genres, '')) LIKE CONCAT('%', LOWER(#{query}), '%') THEN 3
+                    ELSE 4
+                END,
+                m.title ASC
+            </when>
+            <otherwise>
+                ORDER BY m.title ASC
+            </otherwise>
+        </choose>
+        LIMIT #{limit}
+    </select>
+
     <insert id="insert" parameterType="com.archipelago.model.Movie" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO movies (
             title,

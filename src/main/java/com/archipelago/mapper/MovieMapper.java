@@ -23,6 +23,16 @@ public interface MovieMapper {
 
     List<Movie> searchMovies(@Param("title") String title, @Param("limit") int limit);
 
+    List<Movie> searchMoviesFiltered(
+            @Param("query") String query,
+            @Param("person") String person,
+            @Param("genre") String genre,
+            @Param("releaseYear") Integer releaseYear,
+            @Param("graphStatus") String graphStatus,
+            @Param("userId") Long userId,
+            @Param("limit") int limit
+    );
+
     void insert(Movie movie);
 
     void update(Movie movie);

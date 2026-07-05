@@ -1,6 +1,8 @@
 package com.archipelago.service;
 
 import com.archipelago.dto.response.CatalogImportResponse;
+import com.archipelago.dto.request.MovieSearchCriteria;
+import com.archipelago.dto.response.MovieResponse;
 import com.archipelago.model.Movie;
 
 import java.util.List;
@@ -8,6 +10,8 @@ import java.util.List;
 public interface MovieService {
     boolean movieExists(Long id);
     Movie getMovieById(Long id);
+    MovieResponse getMovieDetailsById(Long id);
     List<Movie> searchMovies(String title);
+    List<Movie> searchMovies(MovieSearchCriteria criteria);
     CatalogImportResponse importCuratedCatalog(String source);
 }

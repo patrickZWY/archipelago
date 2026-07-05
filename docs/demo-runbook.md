@@ -53,6 +53,12 @@ Expected result while running: all three return `200`.
 In the browser:
 
 - Click `Enter demo`.
+- Search `Inception`, open the graph, select the `Inception` node, and confirm
+  the detail panel shows provider-backed IDs/sources.
+- Confirm the `Suggested connections` panel includes unsaved Nolan candidates
+  such as `The Prestige`.
+- Search with `Person = Michael Caine` and `Graph = Outside my graph`; confirm
+  the result list includes unsaved catalog candidates.
 - Refresh `/explore`.
 - Refresh `/global-graphs`.
 - Create and open a share link to verify `/shared/<token>`.

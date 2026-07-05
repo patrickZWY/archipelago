@@ -1,11 +1,11 @@
 package com.archipelago.controller;
 
 import com.archipelago.catalog.CatalogImportService;
+import com.archipelago.dto.request.MovieSearchCriteria;
 import com.archipelago.dto.response.CatalogImportResponse;
 import com.archipelago.dto.response.MovieConnectionsResponse;
 import com.archipelago.dto.response.MoviePathResponse;
 import com.archipelago.dto.response.MovieResponse;
-import com.archipelago.model.Movie;
 import com.archipelago.security.CurrentUserProvider;
 import com.archipelago.service.ConnectionService;
 import com.archipelago.service.GraphAccessService;
@@ -34,8 +34,22 @@ public class MovieController {
     private final CatalogImportService catalogImportService;
 
     @GetMapping("/search")
-    public ResponseEntity<ApiResponse<List<MovieResponse>>> searchMovies(@RequestParam("q") String query) {
-        List<MovieResponse> results = movieService.searchMovies(query).stream()
+    public ResponseEntity<ApiResponse<List<MovieResponse>>> searchMovies(
+            @RequestParam(name = "q", required = false) String query,
+            @RequestParam(name = "person", required = false) String person,
+            @RequestParam(name = "genre", required = false) String genre,
+            @RequestParam(name = "year", required = false) String year,
+            @RequestParam(name = "graphStatus", required = false) String graphStatus
+    ) {
+        MovieSearchCriteria criteria = MovieSearchCriteria.from(
+                query,
+                person,
+                genre,
+                year,
+                graphStatus,
+                currentUserProvider.getCurrentUser().getId()
+        );
+        List<MovieResponse> results = movieService.searchMovies(criteria).stream()
                 .map(MovieResponse::from)
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(results, "Movies retrieved"));
@@ -69,8 +83,7 @@ public class MovieController {
 
     @GetMapping("/{movieId}")
     public ResponseEntity<ApiResponse<MovieResponse>> getMovie(@PathVariable Long movieId) {
-        Movie movie = movieService.getMovieById(movieId);
-        return ResponseEntity.ok(ApiResponse.success(MovieResponse.from(movie), "Movie retrieved"));
+        return ResponseEntity.ok(ApiResponse.success(movieService.getMovieDetailsById(movieId), "Movie retrieved"));
     }
 
     @GetMapping("/{movieId}/connections")

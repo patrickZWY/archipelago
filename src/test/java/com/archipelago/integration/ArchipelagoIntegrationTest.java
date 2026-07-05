@@ -649,7 +649,11 @@ class ArchipelagoIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.tagline").value("Let your weakness melt into the room."))
                 .andExpect(jsonPath("$.data.genres[0]").value("Science Fiction"))
-                .andExpect(jsonPath("$.data.castMembers[0]").value("Alexander Kaidanovsky"));
+                .andExpect(jsonPath("$.data.castMembers[0]").value("Alexander Kaidanovsky"))
+                .andExpect(jsonPath("$.data.catalogGenres[0].name").value("Drama"))
+                .andExpect(jsonPath("$.data.people[?(@.name == 'Alexander Kaidanovsky' && @.role == 'CAST')]").isNotEmpty())
+                .andExpect(jsonPath("$.data.externalIds[0].type").value("imdb"))
+                .andExpect(jsonPath("$.data.externalIds[0].value").value("tt0079944"));
     }
 
     @Test
@@ -690,6 +694,68 @@ class ArchipelagoIntegrationTest {
                 .andExpect(jsonPath("$.data.graph.movie.title").value("Inception"))
                 .andExpect(jsonPath("$.data.graph.connections.length()").value(4))
                 .andExpect(jsonPath("$.data.graph.movies.length()").value(5));
+    }
+
+    @Test
+    void demoSessionShowcasesCatalogMetadataFiltersAndSuggestions() throws Exception {
+        CsrfContext csrf = fetchCsrf(null);
+        MvcResult demoResult = mockMvc.perform(post("/api/auth/demo")
+                        .session(csrf.session())
+                        .cookie(csrf.cookie())
+                        .header(csrf.headerName(), csrf.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.username").value("demo"))
+                .andReturn();
+
+        MockHttpSession demoSession = (MockHttpSession) demoResult.getRequest().getSession(false);
+        assertThat(demoSession).isNotNull();
+
+        mockMvc.perform(get("/api/movies/1").session(demoSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("Inception"))
+                .andExpect(jsonPath("$.data.externalIds[0].value").value("tt1375666"))
+                .andExpect(jsonPath("$.data.catalogGenres[?(@.name == 'Heist')]").isNotEmpty())
+                .andExpect(jsonPath("$.data.people[?(@.name == 'Michael Caine' && @.role == 'CAST')]").isNotEmpty());
+
+        mockMvc.perform(get("/api/movies/search")
+                        .param("person", "Michael Caine")
+                        .param("graphStatus", "not_in_graph")
+                        .session(demoSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.title == 'The Prestige')]").isNotEmpty())
+                .andExpect(jsonPath("$.data[?(@.title == 'The Dark Knight')]").isNotEmpty());
+
+        MvcResult suggestionsResult = mockMvc.perform(get("/api/graph-suggestions")
+                        .param("movieId", "1")
+                        .param("limit", "8")
+                        .session(demoSession))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode suggestions = objectMapper.readTree(suggestionsResult.getResponse().getContentAsString()).path("data");
+        boolean sawPrestigeSuggestion = false;
+        boolean sawSharedDirector = false;
+        boolean sawSharedCast = false;
+        for (JsonNode suggestion : suggestions) {
+            if (!"The Prestige".equals(suggestion.path("candidateMovie").path("title").asText())) {
+                continue;
+            }
+            sawPrestigeSuggestion = true;
+            assertThat(suggestion.path("existingEdge").asBoolean()).isFalse();
+            assertThat(suggestion.path("category").asText()).isEqualTo("director");
+            for (JsonNode evidence : suggestion.path("evidence")) {
+                if ("SHARED_DIRECTOR".equals(evidence.path("type").asText())) {
+                    sawSharedDirector = true;
+                }
+                if ("SHARED_CAST".equals(evidence.path("type").asText())) {
+                    sawSharedCast = true;
+                }
+            }
+        }
+
+        assertThat(sawPrestigeSuggestion).isTrue();
+        assertThat(sawSharedDirector).isTrue();
+        assertThat(sawSharedCast).isTrue();
     }
 
     @Test

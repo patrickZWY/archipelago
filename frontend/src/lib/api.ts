@@ -7,9 +7,11 @@ import type {
   FriendRequests,
   GlobalGraph,
   GlobalGraphPath,
+  GraphSuggestion,
   Movie,
   MovieConnections,
   MoviePath,
+  MovieSearchFilters,
   PublicUser,
   SessionResponse,
   SharedGraph,
@@ -77,6 +79,27 @@ async function request<T>(input: string, init: RequestInit = {}): Promise<T> {
   return payload.data;
 }
 
+function movieSearchUrl(queryOrFilters: string | MovieSearchFilters) {
+  const filters = typeof queryOrFilters === "string" ? { query: queryOrFilters } : queryOrFilters;
+  const search = new URLSearchParams();
+  if (filters.query?.trim()) {
+    search.set("q", filters.query.trim());
+  }
+  if (filters.person?.trim()) {
+    search.set("person", filters.person.trim());
+  }
+  if (filters.genre?.trim()) {
+    search.set("genre", filters.genre.trim());
+  }
+  if (filters.year?.trim()) {
+    search.set("year", filters.year.trim());
+  }
+  if (filters.graphStatus && filters.graphStatus !== "all") {
+    search.set("graphStatus", filters.graphStatus);
+  }
+  return `/api/movies/search?${search.toString()}`;
+}
+
 export const api = {
   getSession: () => request<SessionResponse>("/api/auth/session"),
   register: (payload: { email: string; password: string; username: string }) =>
@@ -117,8 +140,24 @@ export const api = {
     }),
   verifyAccount: (token: string) =>
     request<void>(`/api/auth/verify?token=${encodeURIComponent(token)}`),
-  searchMovies: (query: string) =>
-    request<Movie[]>(`/api/movies/search?q=${encodeURIComponent(query)}`),
+  searchMovies: (queryOrFilters: string | MovieSearchFilters) =>
+    request<Movie[]>(movieSearchUrl(queryOrFilters)),
+  getGraphSuggestions: (
+    movieId: number,
+    options: { limit?: number; categories?: Array<NonNullable<Connection["category"]>>; includeExisting?: boolean } = {},
+  ) => {
+    const search = new URLSearchParams({ movieId: String(movieId) });
+    if (options.limit !== undefined) {
+      search.set("limit", String(options.limit));
+    }
+    if (options.categories?.length) {
+      search.set("categories", options.categories.join(","));
+    }
+    if (options.includeExisting) {
+      search.set("includeExisting", "true");
+    }
+    return request<GraphSuggestion[]>(`/api/graph-suggestions?${search.toString()}`);
+  },
   importCuratedCatalog: (source = "curated-spring-2026") =>
     request<CatalogImport>(`/api/movies/imports/curated?source=${encodeURIComponent(source)}`, {
       method: "POST",

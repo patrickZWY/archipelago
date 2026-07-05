@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.archipelago.mapper.CatalogMetadataMapper">
+    <select id="findExternalIdsByMovieId" resultType="com.archipelago.catalog.CatalogMovieExternalId">
+        SELECT
+            provider_id,
+            source,
+            external_id_type,
+            external_id
+        FROM movie_external_ids
+        WHERE movie_id = #{movieId}
+        ORDER BY provider_id ASC, source ASC, external_id_type ASC
+    </select>
+
+    <select id="findGenresByMovieId" resultType="com.archipelago.catalog.CatalogMovieGenre">
+        SELECT
+            provider_id,
+            source,
+            genre
+        FROM movie_genres
+        WHERE movie_id = #{movieId}
+        ORDER BY provider_id ASC, source ASC, genre ASC
+    </select>
+
+    <select id="findPeopleByMovieId" resultType="com.archipelago.catalog.CatalogMoviePerson">
+        SELECT
+            provider_id,
+            source,
+            person_name,
+            role,
+            billing_order
+        FROM movie_people
+        WHERE movie_id = #{movieId}
+        ORDER BY billing_order ASC, role ASC, person_name ASC
+    </select>
+</mapper>

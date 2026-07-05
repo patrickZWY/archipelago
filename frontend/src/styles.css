@@ -278,6 +278,27 @@ textarea {
   color: #f6fbfc;
 }
 
+.suggestion-card {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.suggestion-evidence-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.suggestion-evidence-list span {
+  padding: 0.25rem 0.45rem;
+  border: 1px solid rgba(212, 255, 79, 0.2);
+  border-radius: 8px;
+  color: #d7eef3;
+  background: rgba(212, 255, 79, 0.08);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .graph-frame {
   display: grid;
   gap: 0.85rem;
@@ -425,6 +446,19 @@ textarea {
 
 .search-input {
   margin-bottom: 0.9rem;
+}
+
+.search-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-items: end;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.ghost:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .empty-state,

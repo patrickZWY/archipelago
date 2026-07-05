@@ -100,6 +100,8 @@ Docker Postgres is exposed on `localhost:5433` to avoid conflicts with an existi
 - The deterministic demo data includes:
   - a `demo` account available through the `Open demo session` flow
   - two accepted demo friends with their own saved graph components
+  - provider-owned movie metadata for the demo catalog, so enriched details, metadata filters, and graph suggestions work immediately on a fresh database
+  - an `Inception` path that surfaces unsaved Nolan suggestions such as `The Prestige`
 - Curated import datasets live in `src/main/resources/catalog`.
 - The current curated import source is `curated-spring-2026`.
 - The curated catalog provider is always enabled. TMDb configuration is present but disabled by default; startup rejects `app.catalog.providers.tmdb.enabled=true` unless `app.catalog.providers.tmdb.api-key` and a valid HTTP(S) base URL are configured.
@@ -139,6 +141,33 @@ Main route groups:
 - `/api/friends`: friend list, incoming/outgoing requests, request accept/decline, friend removal, read-only friend graph access
 - `/api/global-graphs`: full current-user graph, accepted-friend list, single-friend full graph, merged all-friends graph, and scope-aware shortest-path explanation
 - `/api/shares`: create, list, revoke, and publicly read shared graph exports
+
+Movie catalog search is additive and backward compatible:
+
+- `GET /api/movies/search?q=stalker`
+- Optional filters: `person`, `genre`, `year`, and `graphStatus`
+- `graphStatus` accepts `all`, `in_graph`, or `not_in_graph` against the current user's saved graph.
+- Person and genre filters read both legacy movie columns and normalized provider metadata.
+
+Movie detail responses remain backward compatible and now include additive provider metadata:
+
+- `catalogGenres`: normalized genre entries with provider/source provenance.
+- `people`: normalized people entries with role and billing order.
+- `externalIds`: provider-owned external identifiers such as IMDb IDs.
+
+Graph suggestions are deterministic and explainable:
+
+- `GET /api/graph-suggestions?movieId=1&limit=8&categories=director,genre`
+- Suggestions return a candidate movie, category, confidence, evidence, and `existingEdge`.
+- Saved duplicate edges are omitted by default; pass `includeExisting=true` to inspect them.
+- Current evidence types are shared director, shared cast, shared genre, and same release decade. Unsupported evidence is omitted rather than faked.
+
+Demo path:
+
+- Click `Enter demo`.
+- Search `Inception`, open its graph, and select the `Inception` node.
+- The movie detail panel should show provider-backed IDs/sources, and the suggested connections panel should include catalog-backed Nolan candidates.
+- Search with `Person = Michael Caine` and `Graph = Outside my graph` to see metadata filters surface unsaved candidates like `The Prestige`.
 
 ## Testing
 
