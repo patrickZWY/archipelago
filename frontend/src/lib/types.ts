@@ -79,11 +79,37 @@ export type GlobalGraphPath = {
   connections: GlobalGraphConnection[];
 };
 
+export type CatalogImportAction = "INSERTED" | "UPDATED" | "SKIPPED" | "FAILED";
+
+export type CatalogErrorKind =
+  | "INVALID_INPUT"
+  | "UNSUPPORTED_PROVIDER_CAPABILITY"
+  | "PROVIDER_UNAVAILABLE"
+  | "RATE_LIMITED_RETRYABLE_EXTERNAL_FAILURE"
+  | "PERMANENT_PROVIDER_DATA_ERROR"
+  | "IMPORT_CONFLICT";
+
+export type CatalogImportItem = {
+  action: CatalogImportAction;
+  movieId: number | null;
+  title: string | null;
+  releaseYear: number | null;
+  externalId: string | null;
+  errorKind: CatalogErrorKind | null;
+  message: string | null;
+};
+
 export type CatalogImport = {
   source: string;
   insertedCount: number;
   updatedCount: number;
   totalProcessed: number;
+  provider: string;
+  runId: string;
+  operation: "PREVIEW" | "APPLY";
+  skippedCount: number;
+  failedCount: number;
+  results: CatalogImportItem[];
 };
 
 export type SharedGraphExport = {

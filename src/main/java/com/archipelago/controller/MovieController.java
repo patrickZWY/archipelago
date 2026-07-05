@@ -1,16 +1,15 @@
 package com.archipelago.controller;
 
+import com.archipelago.catalog.CatalogImportService;
 import com.archipelago.dto.response.CatalogImportResponse;
-import com.archipelago.dto.response.ConnectionResponse;
 import com.archipelago.dto.response.MovieConnectionsResponse;
 import com.archipelago.dto.response.MoviePathResponse;
 import com.archipelago.dto.response.MovieResponse;
-import com.archipelago.model.Connection;
 import com.archipelago.model.Movie;
+import com.archipelago.security.CurrentUserProvider;
 import com.archipelago.service.ConnectionService;
 import com.archipelago.service.GraphAccessService;
 import com.archipelago.service.MovieService;
-import com.archipelago.security.CurrentUserProvider;
 import com.archipelago.util.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -21,9 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/movies")
@@ -34,6 +31,7 @@ public class MovieController {
     private final ConnectionService connectionService;
     private final GraphAccessService graphAccessService;
     private final CurrentUserProvider currentUserProvider;
+    private final CatalogImportService catalogImportService;
 
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<MovieResponse>>> searchMovies(@RequestParam("q") String query) {
@@ -48,6 +46,24 @@ public class MovieController {
             @RequestParam(name = "source", required = false) String source
     ) {
         CatalogImportResponse response = movieService.importCuratedCatalog(source);
+        return ResponseEntity.ok(ApiResponse.success(response, "Catalog import completed"));
+    }
+
+    @PostMapping("/imports/preview")
+    public ResponseEntity<ApiResponse<CatalogImportResponse>> previewCatalogImport(
+            @RequestParam(name = "provider", required = false, defaultValue = "curated") String provider,
+            @RequestParam(name = "source", required = false) String source
+    ) {
+        CatalogImportResponse response = catalogImportService.previewImport(provider, source);
+        return ResponseEntity.ok(ApiResponse.success(response, "Catalog import preview completed"));
+    }
+
+    @PostMapping("/imports/apply")
+    public ResponseEntity<ApiResponse<CatalogImportResponse>> applyCatalogImport(
+            @RequestParam(name = "provider", required = false, defaultValue = "curated") String provider,
+            @RequestParam(name = "source", required = false) String source
+    ) {
+        CatalogImportResponse response = catalogImportService.applyImport(provider, source);
         return ResponseEntity.ok(ApiResponse.success(response, "Catalog import completed"));
     }
 

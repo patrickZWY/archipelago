@@ -1,5 +1,7 @@
 package com.archipelago.exception;
 
+import com.archipelago.catalog.CatalogException;
+import com.archipelago.dto.response.CatalogErrorResponse;
 import com.archipelago.util.ApiResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +42,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TooManyLoginAttemptsException.class)
     public ResponseEntity<ApiResponse<Void>> handleTooManyLoginAttempts(TooManyLoginAttemptsException exception) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ApiResponse.error(exception.getMessage()));
+    }
+
+    @ExceptionHandler(CatalogException.class)
+    public ResponseEntity<ApiResponse<CatalogErrorResponse>> handleCatalogException(CatalogException exception) {
+        return ResponseEntity.status(exception.getHttpStatus())
+                .body(ApiResponse.error(new CatalogErrorResponse(exception.getErrorKind()), exception.getMessage()));
     }
 
     @ExceptionHandler({ResourceNotFoundException.class, UserNotFoundException.class})

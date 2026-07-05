@@ -124,6 +124,16 @@ export const api = {
       method: "POST",
       headers: JSON_HEADERS,
     }),
+  previewCatalogImport: (provider = "curated", source = "curated-spring-2026") =>
+    request<CatalogImport>(`/api/movies/imports/preview?provider=${encodeURIComponent(provider)}&source=${encodeURIComponent(source)}`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+    }),
+  applyCatalogImport: (provider = "curated", source = "curated-spring-2026") =>
+    request<CatalogImport>(`/api/movies/imports/apply?provider=${encodeURIComponent(provider)}&source=${encodeURIComponent(source)}`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+    }),
   getMovie: (movieId: number) =>
     request<Movie>(`/api/movies/${movieId}`),
   getMovieConnections: (movieId: number) =>

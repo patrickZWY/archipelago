@@ -1,0 +1,28 @@
+[
+  {
+    "title": "Apply Boundary One",
+    "releaseYear": 2026,
+    "director": "Apply Director",
+    "pictureUrl": "https://example.test/apply-one.jpg",
+    "externalId": "ttapplyboundary1",
+    "tagline": "The first apply boundary record.",
+    "synopsis": "A catalog record used to verify idempotent apply imports.",
+    "genres": ["Test", "Apply"],
+    "runtimeMinutes": 101,
+    "castMembers": ["Apply Actor One", "Apply Actor Two"],
+    "directorNotes": "A test-only catalog entry."
+  },
+  {
+    "title": "Apply Boundary Two",
+    "releaseYear": 2027,
+    "director": "Second Apply Director",
+    "pictureUrl": "https://example.test/apply-two.jpg",
+    "externalId": "ttapplyboundary2",
+    "tagline": "The second apply boundary record.",
+    "synopsis": "A second catalog record used to verify idempotent apply imports.",
+    "genres": ["Test", "Second"],
+    "runtimeMinutes": 102,
+    "castMembers": ["Second Apply Actor"],
+    "directorNotes": "Another test-only catalog entry."
+  }
+]

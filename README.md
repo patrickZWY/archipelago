@@ -95,12 +95,28 @@ Docker Postgres is exposed on `localhost:5433` to avoid conflicts with an existi
 
 - Flyway migrations live in `src/main/resources/db/migration`.
 - Startup migrations create the core schema, load the base movie catalog, expand movie metadata, and seed demo graphs.
+- Catalog imports persist provider-owned metadata in `movie_external_ids`, `movie_genres`, and `movie_people`.
+- Import lifecycle records are written to `catalog_import_runs` with provider, source, operation, run id, counts, duration, status, and stable error kind.
 - The deterministic demo data includes:
   - a `demo` account available through the `Open demo session` flow
   - two accepted demo friends with their own saved graph components
 - Curated import datasets live in `src/main/resources/catalog`.
 - The current curated import source is `curated-spring-2026`.
-- The app does not depend on any external movie API in v1.
+- The curated catalog provider is always enabled. TMDb configuration is present but disabled by default; startup rejects `app.catalog.providers.tmdb.enabled=true` unless `app.catalog.providers.tmdb.api-key` and a valid HTTP(S) base URL are configured.
+
+## Catalog Imports
+
+Catalog imports run through a provider boundary. The built-in `curated` provider supports movie metadata, people/cast, and images; it does not support remote fetch or streaming availability.
+
+Authenticated import endpoints:
+
+- `POST /api/movies/imports/preview?provider=curated&source=curated-spring-2026`
+- `POST /api/movies/imports/apply?provider=curated&source=curated-spring-2026`
+- `POST /api/movies/imports/curated?source=curated-spring-2026` remains as a compatibility alias for apply.
+
+Import responses include `provider`, `source`, `runId`, `operation`, inserted/updated/skipped/failed counts, `totalProcessed`, and per-movie results. Preview classifies the import without mutating movies or provider metadata; apply replaces provider-owned metadata for the given provider/source while leaving user-authored graph connections and reasons untouched.
+
+Catalog failures return structured error data with `data.errorKind`; callers should use that field rather than parsing `message`. Current error kinds are `INVALID_INPUT`, `UNSUPPORTED_PROVIDER_CAPABILITY`, `PROVIDER_UNAVAILABLE`, `RATE_LIMITED_RETRYABLE_EXTERNAL_FAILURE`, `PERMANENT_PROVIDER_DATA_ERROR`, and `IMPORT_CONFLICT`.
 
 ## API Surface
 
@@ -117,7 +133,7 @@ All API responses use the standard envelope:
 Main route groups:
 
 - `/api/auth`: register, login, demo login, logout, session bootstrap, account verification, verification resend, forgot password, reset password
-- `/api/movies`: catalog search, movie detail, current-user graph component, shortest path, curated catalog import
+- `/api/movies`: catalog search, movie detail, current-user graph component, shortest path, catalog import preview/apply
 - `/api/connections`: CRUD for the authenticated user's saved movie-to-movie edges
 - `/api/users`: profile read/update/delete and username search
 - `/api/friends`: friend list, incoming/outgoing requests, request accept/decline, friend removal, read-only friend graph access

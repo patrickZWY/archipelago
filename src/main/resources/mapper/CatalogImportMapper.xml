@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.archipelago.mapper.CatalogImportMapper">
+    <insert id="insertRun" parameterType="com.archipelago.catalog.CatalogImportRun">
+        INSERT INTO catalog_import_runs (
+            id,
+            provider_id,
+            source,
+            operation,
+            status,
+            started_at
+        ) VALUES (
+            #{id},
+            #{providerId},
+            #{source},
+            #{operation},
+            #{status},
+            #{startedAt}
+        )
+    </insert>
+
+    <update id="completeRun">
+        UPDATE catalog_import_runs
+        SET source = #{source},
+            status = #{status},
+            inserted_count = #{insertedCount},
+            updated_count = #{updatedCount},
+            skipped_count = #{skippedCount},
+            failed_count = #{failedCount},
+            total_processed = #{totalProcessed},
+            error_kind = #{errorKind},
+            error_message = #{errorMessage},
+            completed_at = #{completedAt},
+            duration_ms = #{durationMs}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findMovieIdByProviderExternalId" resultType="long">
+        SELECT movie_id
+        FROM movie_external_ids
+        WHERE provider_id = #{providerId}
+          AND external_id_type = #{externalIdType}
+          AND external_id = #{externalId}
+        LIMIT 1
+    </select>
+
+    <delete id="deleteExternalIdsForMovieSource">
+        DELETE FROM movie_external_ids
+        WHERE movie_id = #{movieId}
+          AND provider_id = #{providerId}
+          AND source = #{source}
+    </delete>
+
+    <delete id="deleteExternalIdByProviderExternalId">
+        DELETE FROM movie_external_ids
+        WHERE provider_id = #{providerId}
+          AND external_id_type = #{externalIdType}
+          AND external_id = #{externalId}
+    </delete>
+
+    <insert id="insertExternalId">
+        INSERT INTO movie_external_ids (
+            movie_id,
+            provider_id,
+            source,
+            external_id_type,
+            external_id
+        ) VALUES (
+            #{movieId},
+            #{providerId},
+            #{source},
+            #{externalIdType},
+            #{externalId}
+        )
+    </insert>
+
+    <delete id="deleteGenresForMovieSource">
+        DELETE FROM movie_genres
+        WHERE movie_id = #{movieId}
+          AND provider_id = #{providerId}
+          AND source = #{source}
+    </delete>
+
+    <insert id="insertGenre">
+        INSERT INTO movie_genres (
+            movie_id,
+            provider_id,
+            source,
+            genre
+        ) VALUES (
+            #{movieId},
+            #{providerId},
+            #{source},
+            #{genre}
+        )
+    </insert>
+
+    <delete id="deletePeopleForMovieSource">
+        DELETE FROM movie_people
+        WHERE movie_id = #{movieId}
+          AND provider_id = #{providerId}
+          AND source = #{source}
+    </delete>
+
+    <insert id="insertPerson">
+        INSERT INTO movie_people (
+            movie_id,
+            provider_id,
+            source,
+            person_name,
+            role,
+            billing_order
+        ) VALUES (
+            #{movieId},
+            #{providerId},
+            #{source},
+            #{personName},
+            #{role},
+            #{billingOrder}
+        )
+    </insert>
+</mapper>

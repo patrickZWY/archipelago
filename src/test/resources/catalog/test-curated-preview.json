@@ -1,0 +1,15 @@
+[
+  {
+    "title": "Preview Boundary Movie",
+    "releaseYear": 2026,
+    "director": "Preview Director",
+    "pictureUrl": "https://example.test/preview.jpg",
+    "externalId": "ttpreviewboundary",
+    "tagline": "Only visible in previews.",
+    "synopsis": "A catalog record used to verify preview imports do not create movies.",
+    "genres": ["Test", "Preview"],
+    "runtimeMinutes": 91,
+    "castMembers": ["Preview Actor"],
+    "directorNotes": "A test-only catalog entry."
+  }
+]
